@@ -6,13 +6,14 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 
-const { sql, getPool } = require("./db");
+const { pool } = require("./db");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // ========================================
@@ -74,6 +75,16 @@ const upload = multer({
 });
 
 // ========================================
+// HÀM KIỂM TRA ID
+// ========================================
+
+function validId(value) {
+    const id = Number(value);
+
+    return Number.isSafeInteger(id) && id > 0;
+}
+
+// ========================================
 // KIỂM TRA BACKEND
 // ========================================
 
@@ -85,16 +96,17 @@ app.get("/api/hello", (req, res) => {
 
 app.get("/api/health", async (req, res) => {
     try {
-        const pool = await getPool();
-
-        await pool.request().query("SELECT 1 AS OK");
+        await pool.query("SELECT 1");
 
         res.json({
             status: "OK",
-            database: "Connected"
+            database: "Connected",
+            provider: "Neon PostgreSQL"
         });
 
     } catch (error) {
+        console.error("Health Error:", error.message);
+
         res.status(500).json({
             status: "ERROR",
             message: "Không thể kết nối database"
@@ -109,17 +121,17 @@ app.get("/api/health", async (req, res) => {
 // Lấy danh sách phim
 app.get("/api/movies", async (req, res) => {
     try {
-        const pool = await getPool();
-
-        const result = await pool.request().query(`
+        const result = await pool.query(`
             SELECT *
-            FROM Movies
-            ORDER BY MovieID DESC
+            FROM "Movies"
+            ORDER BY "MovieID" DESC
         `);
 
-        res.json(result.recordset);
+        res.json(result.rows);
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(500).json({
             message: "Không thể tải danh sách phim"
         });
@@ -134,11 +146,13 @@ app.post(
         try {
             const { title, genre, duration } = req.body;
 
+            const movieDuration = Number(duration);
+
             if (
                 !title ||
                 !genre ||
-                !Number.isInteger(Number(duration)) ||
-                Number(duration) <= 0
+                !Number.isInteger(movieDuration) ||
+                movieDuration <= 0
             ) {
                 return res.status(400).json({
                     message: "Thông tin phim không hợp lệ"
@@ -149,25 +163,27 @@ app.post(
                 ? "/uploads/" + req.file.filename
                 : null;
 
-            const pool = await getPool();
-
-            await pool.request()
-                .input("title", sql.NVarChar(200), title)
-                .input("genre", sql.NVarChar(100), genre)
-                .input("duration", sql.Int, Number(duration))
-                .input("imageUrl", sql.NVarChar(500), imageUrl)
-                .query(`
-                    INSERT INTO Movies
-                    (Title, Genre, Duration, ImageUrl)
-                    VALUES
-                    (@title, @genre, @duration, @imageUrl)
-                `);
+            await pool.query(
+                `
+                INSERT INTO "Movies"
+                ("Title", "Genre", "Duration", "ImageUrl")
+                VALUES ($1, $2, $3, $4)
+                `,
+                [
+                    title,
+                    genre,
+                    movieDuration,
+                    imageUrl
+                ]
+            );
 
             res.status(201).json({
                 message: "Thêm phim thành công!"
             });
 
         } catch (error) {
+            console.error(error.message);
+
             res.status(500).json({
                 message: "Không thể thêm phim"
             });
@@ -183,31 +199,30 @@ app.put(
         try {
             const id = Number(req.params.id);
             const { title, genre, duration } = req.body;
+            const movieDuration = Number(duration);
 
             if (
-                !Number.isInteger(id) ||
-                id <= 0 ||
+                !validId(id) ||
                 !title ||
                 !genre ||
-                !Number.isInteger(Number(duration)) ||
-                Number(duration) <= 0
+                !Number.isInteger(movieDuration) ||
+                movieDuration <= 0
             ) {
                 return res.status(400).json({
                     message: "Dữ liệu không hợp lệ"
                 });
             }
 
-            const pool = await getPool();
+            const oldMovie = await pool.query(
+                `
+                SELECT "ImageUrl"
+                FROM "Movies"
+                WHERE "MovieID" = $1
+                `,
+                [id]
+            );
 
-            const oldMovie = await pool.request()
-                .input("id", sql.Int, id)
-                .query(`
-                    SELECT ImageUrl
-                    FROM Movies
-                    WHERE MovieID = @id
-                `);
-
-            if (!oldMovie.recordset.length) {
+            if (oldMovie.rows.length === 0) {
                 return res.status(404).json({
                     message: "Không tìm thấy phim"
                 });
@@ -215,29 +230,34 @@ app.put(
 
             const imageUrl = req.file
                 ? "/uploads/" + req.file.filename
-                : oldMovie.recordset[0].ImageUrl;
+                : oldMovie.rows[0].ImageUrl;
 
-            await pool.request()
-                .input("id", sql.Int, id)
-                .input("title", sql.NVarChar(200), title)
-                .input("genre", sql.NVarChar(100), genre)
-                .input("duration", sql.Int, Number(duration))
-                .input("imageUrl", sql.NVarChar(500), imageUrl)
-                .query(`
-                    UPDATE Movies
-                    SET
-                        Title = @title,
-                        Genre = @genre,
-                        Duration = @duration,
-                        ImageUrl = @imageUrl
-                    WHERE MovieID = @id
-                `);
+            await pool.query(
+                `
+                UPDATE "Movies"
+                SET
+                    "Title" = $1,
+                    "Genre" = $2,
+                    "Duration" = $3,
+                    "ImageUrl" = $4
+                WHERE "MovieID" = $5
+                `,
+                [
+                    title,
+                    genre,
+                    movieDuration,
+                    imageUrl,
+                    id
+                ]
+            );
 
             res.json({
                 message: "Cập nhật phim thành công!"
             });
 
         } catch (error) {
+            console.error(error.message);
+
             res.status(500).json({
                 message: "Không thể cập nhật phim"
             });
@@ -250,22 +270,21 @@ app.delete("/api/movies/:id", async (req, res) => {
     try {
         const id = Number(req.params.id);
 
-        if (!Number.isInteger(id) || id <= 0) {
+        if (!validId(id)) {
             return res.status(400).json({
                 message: "ID không hợp lệ"
             });
         }
 
-        const pool = await getPool();
+        const result = await pool.query(
+            `
+            DELETE FROM "Movies"
+            WHERE "MovieID" = $1
+            `,
+            [id]
+        );
 
-        const result = await pool.request()
-            .input("id", sql.Int, id)
-            .query(`
-                DELETE FROM Movies
-                WHERE MovieID = @id
-            `);
-
-        if (result.rowsAffected[0] === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({
                 message: "Không tìm thấy phim"
             });
@@ -276,9 +295,10 @@ app.delete("/api/movies/:id", async (req, res) => {
         });
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(409).json({
-            message:
-                "Không thể xóa phim đang có lịch chiếu"
+            message: "Không thể xóa phim đang có lịch chiếu"
         });
     }
 });
@@ -287,81 +307,96 @@ app.delete("/api/movies/:id", async (req, res) => {
 // QUẢN LÝ PHÒNG CHIẾU
 // ========================================
 
+// Lấy danh sách phòng
 app.get("/api/rooms", async (req, res) => {
     try {
-        const pool = await getPool();
-
-        const result = await pool.request().query(`
+        const result = await pool.query(`
             SELECT *
-            FROM Rooms
-            ORDER BY RoomID
+            FROM "Rooms"
+            ORDER BY "RoomID"
         `);
 
-        res.json(result.recordset);
+        res.json(result.rows);
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(500).json({
             message: "Không thể tải phòng chiếu"
         });
     }
 });
 
+// Thêm phòng
 app.post("/api/rooms", async (req, res) => {
     try {
         const { roomName } = req.body;
 
-        if (!roomName || !roomName.trim()) {
+        if (
+            typeof roomName !== "string" ||
+            !roomName.trim()
+        ) {
             return res.status(400).json({
                 message: "Vui lòng nhập tên phòng"
             });
         }
 
-        const pool = await getPool();
-
-        await pool.request()
-            .input(
-                "roomName",
-                sql.NVarChar(100),
-                roomName.trim()
-            )
-            .query(`
-                INSERT INTO Rooms
-                (RoomName, RowCount, SeatPerRow)
-                VALUES (@roomName, 10, 8)
-            `);
+        await pool.query(
+            `
+            INSERT INTO "Rooms"
+            ("RoomName", "NumberOfRows", "SeatPerRow")
+            VALUES ($1, $2, $3)
+            `,
+            [roomName.trim(), 10, 8]
+        );
 
         res.status(201).json({
             message: "Thêm phòng thành công!"
         });
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(500).json({
             message: "Không thể thêm phòng"
         });
     }
 });
 
+// Xóa phòng
 app.delete("/api/rooms/:id", async (req, res) => {
     try {
         const id = Number(req.params.id);
 
-        const pool = await getPool();
+        if (!validId(id)) {
+            return res.status(400).json({
+                message: "ID không hợp lệ"
+            });
+        }
 
-        await pool.request()
-            .input("id", sql.Int, id)
-            .query(`
-                DELETE FROM Rooms
-                WHERE RoomID = @id
-            `);
+        const result = await pool.query(
+            `
+            DELETE FROM "Rooms"
+            WHERE "RoomID" = $1
+            `,
+            [id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                message: "Không tìm thấy phòng"
+            });
+        }
 
         res.json({
             message: "Xóa phòng thành công!"
         });
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(409).json({
-            message:
-                "Không thể xóa phòng đang có lịch chiếu"
+            message: "Không thể xóa phòng đang có lịch chiếu"
         });
     }
 });
@@ -370,36 +405,38 @@ app.delete("/api/rooms/:id", async (req, res) => {
 // QUẢN LÝ LỊCH CHIẾU
 // ========================================
 
+// Lấy danh sách lịch chiếu
 app.get("/api/showtimes", async (req, res) => {
     try {
-        const pool = await getPool();
-
-        const result = await pool.request().query(`
+        const result = await pool.query(`
             SELECT
-                s.ShowtimeID,
-                s.MovieID,
-                s.RoomID,
-                s.StartTime,
-                s.TicketPrice,
-                m.Title,
-                r.RoomName
-            FROM Showtimes s
-            JOIN Movies m
-                ON s.MovieID = m.MovieID
-            JOIN Rooms r
-                ON s.RoomID = r.RoomID
-            ORDER BY s.StartTime DESC
+                s."ShowtimeID",
+                s."MovieID",
+                s."RoomID",
+                s."StartTime",
+                s."TicketPrice",
+                m."Title",
+                r."RoomName"
+            FROM "Showtimes" s
+            JOIN "Movies" m
+                ON s."MovieID" = m."MovieID"
+            JOIN "Rooms" r
+                ON s."RoomID" = r."RoomID"
+            ORDER BY s."StartTime" DESC
         `);
 
-        res.json(result.recordset);
+        res.json(result.rows);
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(500).json({
             message: "Không thể tải lịch chiếu"
         });
     }
 });
 
+// Thêm lịch chiếu
 app.post("/api/showtimes", async (req, res) => {
     try {
         const {
@@ -412,11 +449,13 @@ app.post("/api/showtimes", async (req, res) => {
         const movie = Number(movieId);
         const room = Number(roomId);
         const price = Number(ticketPrice);
+        const date = new Date(startTime);
 
         if (
-            !Number.isInteger(movie) ||
-            !Number.isInteger(room) ||
+            !validId(movie) ||
+            !validId(room) ||
             !startTime ||
+            Number.isNaN(date.getTime()) ||
             !Number.isFinite(price) ||
             price < 0
         ) {
@@ -425,50 +464,67 @@ app.post("/api/showtimes", async (req, res) => {
             });
         }
 
-        const pool = await getPool();
-
-        await pool.request()
-            .input("movieId", sql.Int, movie)
-            .input("roomId", sql.Int, room)
-            .input("startTime", sql.DateTime2, new Date(startTime))
-            .input("price", sql.Decimal(12, 2), price)
-            .query(`
-                INSERT INTO Showtimes
-                (MovieID, RoomID, StartTime, TicketPrice)
-                VALUES
-                (@movieId, @roomId, @startTime, @price)
-            `);
+        await pool.query(
+            `
+            INSERT INTO "Showtimes"
+            ("MovieID", "RoomID", "StartTime", "TicketPrice")
+            VALUES ($1, $2, $3, $4)
+            `,
+            [
+                movie,
+                room,
+                date,
+                price
+            ]
+        );
 
         res.status(201).json({
             message: "Tạo lịch chiếu thành công!"
         });
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(500).json({
             message: "Không thể tạo lịch chiếu"
         });
     }
 });
 
+// Xóa lịch chiếu
 app.delete("/api/showtimes/:id", async (req, res) => {
     try {
-        const pool = await getPool();
+        const id = Number(req.params.id);
 
-        await pool.request()
-            .input("id", sql.Int, Number(req.params.id))
-            .query(`
-                DELETE FROM Showtimes
-                WHERE ShowtimeID = @id
-            `);
+        if (!validId(id)) {
+            return res.status(400).json({
+                message: "ID không hợp lệ"
+            });
+        }
+
+        const result = await pool.query(
+            `
+            DELETE FROM "Showtimes"
+            WHERE "ShowtimeID" = $1
+            `,
+            [id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                message: "Không tìm thấy lịch chiếu"
+            });
+        }
 
         res.json({
             message: "Xóa lịch chiếu thành công!"
         });
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(409).json({
-            message:
-                "Không thể xóa lịch chiếu đã có ghế đặt"
+            message: "Không thể xóa lịch chiếu đã có ghế đặt"
         });
     }
 });
@@ -477,45 +533,74 @@ app.delete("/api/showtimes/:id", async (req, res) => {
 // QUẢN LÝ GHẾ
 // ========================================
 
+// Lấy danh sách ghế
 app.get("/api/seats/:showtimeId", async (req, res) => {
     try {
         const showtimeId = Number(req.params.showtimeId);
 
-        const pool = await getPool();
+        if (!validId(showtimeId)) {
+            return res.status(400).json({
+                message: "Mã suất chiếu không hợp lệ"
+            });
+        }
 
-        const result = await pool.request()
-            .input("id", sql.Int, showtimeId)
-            .query(`
-                SELECT SeatCode
-                FROM BookedSeats
-                WHERE ShowtimeID = @id
-            `);
+        const showtime = await pool.query(
+            `
+            SELECT
+                r."NumberOfRows",
+                r."SeatPerRow"
+            FROM "Showtimes" s
+            JOIN "Rooms" r
+                ON s."RoomID" = r."RoomID"
+            WHERE s."ShowtimeID" = $1
+            `,
+            [showtimeId]
+        );
+
+        if (showtime.rows.length === 0) {
+            return res.status(404).json({
+                message: "Không tìm thấy suất chiếu"
+            });
+        }
+
+        const result = await pool.query(
+            `
+            SELECT "SeatCode"
+            FROM "BookedSeats"
+            WHERE "ShowtimeID" = $1
+            `,
+            [showtimeId]
+        );
 
         res.json({
-            rows: 10,
-            columns: 8,
-            bookedSeats: result.recordset.map(
+            rows: showtime.rows[0].NumberOfRows,
+            columns: showtime.rows[0].SeatPerRow,
+            bookedSeats: result.rows.map(
                 item => item.SeatCode
             )
         });
 
     } catch (error) {
+        console.error(error.message);
+
         res.status(500).json({
             message: "Không thể tải ghế"
         });
     }
 });
 
+// Đặt ghế
 app.post("/api/seats/book", async (req, res) => {
     try {
         const { showtimeId, seatCode } = req.body;
 
         const id = Number(showtimeId);
-        const code = String(seatCode || "").toUpperCase();
+        const code = String(seatCode || "")
+            .trim()
+            .toUpperCase();
 
         if (
-            !Number.isInteger(id) ||
-            id <= 0 ||
+            !validId(id) ||
             !/^[A-J][1-8]$/.test(code)
         ) {
             return res.status(400).json({
@@ -523,26 +608,62 @@ app.post("/api/seats/book", async (req, res) => {
             });
         }
 
-        const pool = await getPool();
+        const showtime = await pool.query(
+            `
+            SELECT
+                r."NumberOfRows",
+                r."SeatPerRow"
+            FROM "Showtimes" s
+            JOIN "Rooms" r
+                ON s."RoomID" = r."RoomID"
+            WHERE s."ShowtimeID" = $1
+            `,
+            [id]
+        );
 
-        await pool.request()
-            .input("showtimeId", sql.Int, id)
-            .input("seatCode", sql.VarChar(5), code)
-            .query(`
-                INSERT INTO BookedSeats
-                (ShowtimeID, SeatCode)
-                VALUES
-                (@showtimeId, @seatCode)
-            `);
+        if (showtime.rows.length === 0) {
+            return res.status(404).json({
+                message: "Suất chiếu không tồn tại"
+            });
+        }
+
+        const room = showtime.rows[0];
+        const rowIndex = code.charCodeAt(0) - 64;
+        const seatNumber = Number(code.slice(1));
+
+        if (
+            rowIndex > room.NumberOfRows ||
+            seatNumber > room.SeatPerRow
+        ) {
+            return res.status(400).json({
+                message: "Ghế không tồn tại trong phòng"
+            });
+        }
+
+        await pool.query(
+            `
+            INSERT INTO "BookedSeats"
+            ("ShowtimeID", "SeatCode")
+            VALUES ($1, $2)
+            `,
+            [id, code]
+        );
 
         res.status(201).json({
             message: "Đặt ghế thành công!"
         });
 
     } catch (error) {
-        res.status(409).json({
-            message:
-                "Ghế đã được đặt hoặc suất chiếu không hợp lệ"
+        console.error(error.message);
+
+        if (error.code === "23505") {
+            return res.status(409).json({
+                message: "Ghế đã được đặt"
+            });
+        }
+
+        res.status(500).json({
+            message: "Không thể đặt ghế"
         });
     }
 });
@@ -567,6 +688,7 @@ if (require.main === module) {
     app.listen(PORT, () => {
         console.log("=================================");
         console.log("TOON CINEMA BACKEND");
+        console.log("Database: Neon PostgreSQL");
         console.log(`http://localhost:${PORT}`);
         console.log("=================================");
     });
