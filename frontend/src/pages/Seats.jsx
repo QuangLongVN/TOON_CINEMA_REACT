@@ -1,34 +1,25 @@
 import { useEffect, useState } from "react";
-import { seatAPI, showtimeAPI, roomAPI } from "../services/api";
+import { seatAPI, showtimeAPI } from "../services/api";
 
 export default function Seats() {
     const [showtimes, setShowtimes] = useState([]);
-    const [rooms, setRooms] = useState([]);
     const [selectedShowtime, setSelectedShowtime] = useState("");
     const [bookedSeats, setBookedSeats] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    // LẤY DANH SÁCH SUẤT CHIẾU VÀ PHÒNG
     useEffect(() => {
-        async function loadData() {
-            try {
-                const [showtimeRes, roomRes] = await Promise.all([
-                    showtimeAPI.getAll(),
-                    roomAPI.getAll()
-                ]);
-
-                setShowtimes(showtimeRes.data);
-                setRooms(roomRes.data);
-            } catch (error) {
-                console.error("Lỗi tải dữ liệu:", error);
-                alert("Không thể tải dữ liệu suất chiếu hoặc phòng.");
-            }
-        }
-
-        loadData();
+        showtimeAPI.getAll()
+            .then((res) => {
+                setShowtimes(
+                    Array.isArray(res.data) ? res.data : []
+                );
+            })
+            .catch((error) => {
+                console.error("Lỗi tải suất chiếu:", error);
+                alert("Không thể tải suất chiếu.");
+            });
     }, []);
 
-    // LẤY DANH SÁCH GHẾ ĐÃ ĐẶT
     async function loadSeats(id) {
         if (!id) {
             setBookedSeats([]);
@@ -40,7 +31,9 @@ export default function Seats() {
 
             const res = await seatAPI.getBooked(id);
 
-            setBookedSeats(res.data);
+            setBookedSeats(
+                Array.isArray(res.data) ? res.data : []
+            );
         } catch (error) {
             console.error("Lỗi tải ghế:", error);
             alert("Không thể tải danh sách ghế.");
@@ -49,15 +42,16 @@ export default function Seats() {
         }
     }
 
-    // ĐẶT / HỦY ĐẶT GHẾ
     async function handleSeatClick(seatNumber) {
-        if (!selectedShowtime) return;
+        if (!selectedShowtime || loading) return;
 
         const booked = bookedSeats.find(
             (item) => item.seat_number === seatNumber
         );
 
         try {
+            setLoading(true);
+
             if (booked) {
                 if (!window.confirm(`Hủy đặt ghế ${seatNumber}?`)) {
                     return;
@@ -76,6 +70,7 @@ export default function Seats() {
             }
 
             await loadSeats(selectedShowtime);
+
         } catch (error) {
             console.error("Lỗi thao tác ghế:", error);
 
@@ -83,51 +78,36 @@ export default function Seats() {
                 error.response?.data?.message ||
                 "Thao tác thất bại."
             );
+        } finally {
+            setLoading(false);
         }
     }
 
-    // SUẤT CHIẾU ĐANG CHỌN
     const currentShowtime = showtimes.find(
         (item) => String(item.id) === String(selectedShowtime)
     );
 
-    // PHÒNG CHIẾU CỦA SUẤT CHIẾU
-    const currentRoom = rooms.find(
-        (room) =>
-            String(room.id) === String(currentShowtime?.room_id)
-    );
+    // MỖI PHÒNG CỐ ĐỊNH 80 GHẾ
+    // 8 hàng A-H, mỗi hàng 10 ghế
+    const seats = Array.from({ length: 80 }, (_, index) => {
+        const row = String.fromCharCode(
+            65 + Math.floor(index / 10)
+        );
 
-    // LẤY SỐ GHẾ THỰC TẾ TỪ DATABASE
-    const totalSeats = Number(currentRoom?.total_seats || 0);
+        const column = (index % 10) + 1;
 
-    // TỰ ĐỘNG TẠO DANH SÁCH GHẾ
-    // Ví dụ: 20 ghế => A1-A10, B1-B10
-    const seats = Array.from(
-        { length: totalSeats },
-        (_, index) => {
-            const rowIndex = Math.floor(index / 10);
-            const column = (index % 10) + 1;
-
-            // A, B, C ... Z, AA, AB ...
-            let row = "";
-            let number = rowIndex + 1;
-
-            while (number > 0) {
-                number--;
-                row = String.fromCharCode(65 + (number % 26)) + row;
-                number = Math.floor(number / 26);
-            }
-
-            return `${row}${column}`;
-        }
-    );
+        return `${row}${column}`;
+    });
 
     return (
         <div className="panel">
             <div className="panel-header">
                 <div>
                     <h3>Sơ đồ ghế</h3>
-                    <p>Chọn suất chiếu để quản lý ghế</p>
+                    <p>
+                        Mỗi phòng chiếu có 80 ghế
+                        (8 hàng × 10 ghế)
+                    </p>
                 </div>
             </div>
 
@@ -158,7 +138,7 @@ export default function Seats() {
                 </select>
             </div>
 
-            {currentShowtime && currentRoom && (
+            {currentShowtime && (
                 <>
                     <div className="screen">
                         MÀN HÌNH CHIẾU
@@ -197,12 +177,6 @@ export default function Seats() {
                         </span>
                     </div>
                 </>
-            )}
-
-            {currentShowtime && !currentRoom && (
-                <div className="empty">
-                    Không tìm thấy thông tin phòng chiếu.
-                </div>
             )}
 
             {!currentShowtime && (

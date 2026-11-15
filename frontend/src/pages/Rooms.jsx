@@ -6,8 +6,7 @@ export default function Rooms() {
     const [rooms, setRooms] = useState([]);
 
     const [form, setForm] = useState({
-        name: "",
-        total_seats: ""
+        name: ""
     });
 
     const [editingId, setEditingId] = useState(null);
@@ -20,7 +19,7 @@ export default function Rooms() {
             setRooms(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error("Lỗi tải phòng:", error);
-            alert("Không thể tải phòng chiếu.");
+            alert("Không thể tải danh sách phòng chiếu.");
         }
     }
 
@@ -30,23 +29,13 @@ export default function Rooms() {
 
     function openCreate() {
         setEditingId(null);
-
-        setForm({
-            name: "",
-            total_seats: ""
-        });
-
+        setForm({ name: "" });
         setShowForm(true);
     }
 
     function openEdit(room) {
         setEditingId(room.id);
-
-        setForm({
-            name: room.name || "",
-            total_seats: String(room.total_seats ?? "")
-        });
-
+        setForm({ name: room.name || "" });
         setShowForm(true);
     }
 
@@ -55,34 +44,25 @@ export default function Rooms() {
 
         setShowForm(false);
         setEditingId(null);
+        setForm({ name: "" });
     }
 
     async function saveRoom(e) {
         e.preventDefault();
 
+        if (saving) return;
+
         const name = form.name.trim();
-        const seats = Number(form.total_seats);
 
         if (!name) {
             alert("Vui lòng nhập tên phòng.");
             return;
         }
 
-        if (
-            form.total_seats === "" ||
-            !Number.isInteger(seats) ||
-            seats <= 0
-        ) {
-            alert("Số ghế phải là số nguyên lớn hơn 0.");
-            return;
-        }
-
         const data = {
-            name: name,
-            total_seats: seats
+            name,
+            total_seats: 80
         };
-
-        console.log("Dữ liệu gửi lên Backend:", data);
 
         try {
             setSaving(true);
@@ -95,14 +75,7 @@ export default function Rooms() {
                 alert("Thêm phòng thành công!");
             }
 
-            setShowForm(false);
-            setEditingId(null);
-
-            setForm({
-                name: "",
-                total_seats: ""
-            });
-
+            closeFormAfterSave();
             await loadRooms();
 
         } catch (error) {
@@ -117,24 +90,27 @@ export default function Rooms() {
         }
     }
 
+    function closeFormAfterSave() {
+        setShowForm(false);
+        setEditingId(null);
+        setForm({ name: "" });
+    }
+
     async function deleteRoom(id) {
-        if (!window.confirm("Xóa phòng chiếu này?")) {
+        if (!window.confirm("Bạn có chắc muốn xóa phòng chiếu này?")) {
             return;
         }
 
         try {
             await roomAPI.delete(id);
-
             alert("Xóa phòng thành công!");
-
             await loadRooms();
-
         } catch (error) {
             console.error("Lỗi xóa phòng:", error);
 
             alert(
                 error.response?.data?.message ||
-                "Không thể xóa phòng."
+                "Không thể xóa phòng chiếu."
             );
         }
     }
@@ -176,15 +152,14 @@ export default function Rooms() {
                                     <strong>{room.name}</strong>
                                 </td>
 
-                                <td>
-                                    {room.total_seats} ghế
-                                </td>
+                                <td>80 ghế</td>
 
                                 <td>
                                     <div className="actions">
                                         <button
                                             className="btn-edit"
                                             onClick={() => openEdit(room)}
+                                            title="Sửa phòng"
                                         >
                                             <Pencil size={16} />
                                         </button>
@@ -192,6 +167,7 @@ export default function Rooms() {
                                         <button
                                             className="btn-delete"
                                             onClick={() => deleteRoom(room.id)}
+                                            title="Xóa phòng"
                                         >
                                             <Trash2 size={16} />
                                         </button>
@@ -202,10 +178,7 @@ export default function Rooms() {
 
                         {rooms.length === 0 && (
                             <tr>
-                                <td
-                                    colSpan="4"
-                                    className="empty"
-                                >
+                                <td colSpan="4" className="empty">
                                     Chưa có phòng chiếu.
                                 </td>
                             </tr>
@@ -229,7 +202,7 @@ export default function Rooms() {
                             <input
                                 type="text"
                                 required
-                                placeholder="Nhập tên phòng"
+                                placeholder="Nhập tên phòng chiếu"
                                 value={form.name}
                                 onChange={(e) =>
                                     setForm({
@@ -239,22 +212,15 @@ export default function Rooms() {
                                 }
                             />
 
-                            <label>Số ghế</label>
-
-                            <input
-                                type="number"
-                                min="1"
-                                step="1"
-                                required
-                                placeholder="Nhập số ghế"
-                                value={form.total_seats}
-                                onChange={(e) =>
-                                    setForm({
-                                        ...form,
-                                        total_seats: e.target.value
-                                    })
-                                }
-                            />
+                            <p
+                                style={{
+                                    marginTop: "12px",
+                                    color: "#8b7ba5",
+                                    fontSize: "14px"
+                                }}
+                            >
+                                Mỗi phòng mặc định có 80 ghế.
+                            </p>
 
                             <div className="form-actions">
                                 <button
@@ -271,9 +237,7 @@ export default function Rooms() {
                                     className="btn-primary"
                                     disabled={saving}
                                 >
-                                    {saving
-                                        ? "Đang lưu..."
-                                        : "Lưu"}
+                                    {saving ? "Đang lưu..." : "Lưu"}
                                 </button>
                             </div>
                         </form>
