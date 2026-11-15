@@ -1,7 +1,27 @@
 const db = require("../config/db");
+const cloudinary = require("../config/cloudinary");
 
-// Lấy danh sách phim
-exports.getMovies = async (req, res) => {
+const uploadPoster = (file) => {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: "toon-cinema/posters",
+                resource_type: "image"
+            },
+            (error, result) => {
+                if (error) {
+                    return reject(error);
+                }
+
+                resolve(result.secure_url);
+            }
+        );
+
+        stream.end(file.buffer);
+    });
+};
+
+exports.getAll = async (req, res) => {
     try {
         const [rows] = await db.query(
             "SELECT * FROM movies ORDER BY id DESC"
@@ -10,14 +30,14 @@ exports.getMovies = async (req, res) => {
         res.json(rows);
     } catch (error) {
         console.error(error);
+
         res.status(500).json({
-            message: "Lỗi lấy danh sách phim"
+            message: "Không thể tải danh sách phim"
         });
     }
 };
 
-// Lấy chi tiết phim
-exports.getMovieById = async (req, res) => {
+exports.getById = async (req, res) => {
     try {
         const [rows] = await db.query(
             "SELECT * FROM movies WHERE id = ?",
@@ -33,23 +53,16 @@ exports.getMovieById = async (req, res) => {
         res.json(rows[0]);
     } catch (error) {
         console.error(error);
+
         res.status(500).json({
-            message: "Lỗi lấy thông tin phim"
+            message: "Không thể tải thông tin phim"
         });
     }
 };
 
-// Thêm phim
-exports.createMovie = async (req, res) => {
+exports.create = async (req, res) => {
     try {
-        const {
-            title,
-            genre,
-            duration,
-            description,
-            poster,
-            status
-        } = req.body;
+        const { title, genre, duration, status } = req.body;
 
         if (!title || !title.trim()) {
             return res.status(400).json({
@@ -57,43 +70,54 @@ exports.createMovie = async (req, res) => {
             });
         }
 
+        let poster = null;
+
+        if (req.file) {
+            poster = await uploadPoster(req.file);
+        }
+
         const [result] = await db.query(
             `INSERT INTO movies
-             (title, genre, duration, description, poster, status)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            (title, genre, duration, poster, status)
+            VALUES (?, ?, ?, ?, ?)`,
             [
                 title.trim(),
-                genre || null,
+                genre || "",
                 duration || null,
-                description || null,
-                poster || null,
+                poster,
                 status || "Đang chiếu"
             ]
         );
 
         res.status(201).json({
             message: "Thêm phim thành công",
-            id: result.insertId
+            id: result.insertId,
+            poster
         });
     } catch (error) {
         console.error(error);
+
         res.status(500).json({
-            message: "Lỗi thêm phim"
+            message: "Không thể thêm phim"
         });
     }
 };
 
-// Sửa phim
-exports.updateMovie = async (req, res) => {
+exports.update = async (req, res) => {
     try {
-        const {
-            title,
-            genre,
-            duration,
-            description,
-            poster,
-            status
-        } = req.body;
+        const { id } = req.params;
+        const { title, genre, duration, status } = req.body;
+
+        const [rows] = await db.query(
+            "SELECT * FROM movies WHERE id = ?",
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                message: "Không tìm thấy phim"
+            });
+        }
 
         if (!title || !title.trim()) {
             return res.status(400).json({
@@ -101,45 +125,44 @@ exports.updateMovie = async (req, res) => {
             });
         }
 
-        const [result] = await db.query(
+        let poster = rows[0].poster;
+
+        if (req.file) {
+            poster = await uploadPoster(req.file);
+        }
+
+        await db.query(
             `UPDATE movies
              SET title = ?,
                  genre = ?,
                  duration = ?,
-                 description = ?,
                  poster = ?,
                  status = ?
              WHERE id = ?`,
             [
                 title.trim(),
-                genre || null,
+                genre || "",
                 duration || null,
-                description || null,
-                poster || null,
+                poster,
                 status || "Đang chiếu",
-                req.params.id
+                id
             ]
         );
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                message: "Không tìm thấy phim"
-            });
-        }
-
         res.json({
-            message: "Cập nhật phim thành công"
+            message: "Cập nhật phim thành công",
+            poster
         });
     } catch (error) {
         console.error(error);
+
         res.status(500).json({
-            message: "Lỗi cập nhật phim"
+            message: "Không thể cập nhật phim"
         });
     }
 };
 
-// Xóa phim
-exports.deleteMovie = async (req, res) => {
+exports.delete = async (req, res) => {
     try {
         const [result] = await db.query(
             "DELETE FROM movies WHERE id = ?",
@@ -157,8 +180,9 @@ exports.deleteMovie = async (req, res) => {
         });
     } catch (error) {
         console.error(error);
+
         res.status(500).json({
-            message: "Lỗi xóa phim"
+            message: "Không thể xóa phim"
         });
     }
 };
