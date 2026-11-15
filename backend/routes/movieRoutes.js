@@ -1,25 +1,53 @@
 const express = require("express");
-const router = express.Router();
+const multer = require("multer");
 
 const movieController = require("../controllers/movieController");
-const upload = require("../middleware/upload");
 
-router.get("/", movieController.getAll);
+const router = express.Router();
 
-router.get("/:id", movieController.getById);
+const upload = multer({
+    storage: multer.memoryStorage(),
 
+    limits: {
+        fileSize: 5 * 1024 * 1024
+    },
+
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+        ];
+
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error("Chỉ hỗ trợ ảnh JPG, PNG, WEBP"));
+        }
+    }
+});
+
+// Lấy danh sách phim
+router.get("/", movieController.getAllMovies);
+
+// Lấy chi tiết phim
+router.get("/:id", movieController.getMovieById);
+
+// Thêm phim và tải poster
 router.post(
     "/",
     upload.single("poster"),
-    movieController.create
+    movieController.createMovie
 );
 
+// Sửa phim và thay poster
 router.put(
     "/:id",
     upload.single("poster"),
-    movieController.update
+    movieController.updateMovie
 );
 
-router.delete("/:id", movieController.delete);
+// Xóa phim
+router.delete("/:id", movieController.deleteMovie);
 
 module.exports = router;
