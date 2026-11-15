@@ -2,7 +2,6 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const db = require("./config/db");
 
 const movieRoutes = require("./routes/movieRoutes");
 const roomRoutes = require("./routes/roomRoutes");
@@ -10,111 +9,89 @@ const showtimeRoutes = require("./routes/showtimeRoutes");
 const seatRoutes = require("./routes/seatRoutes");
 const productRoutes = require("./routes/productRoutes");
 
+const db = require("./config/db");
+
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ========================================
+// 1. CORS - CHO PHÉP FRONTEND VERCEL
+// ========================================
 
 app.use(cors({
     origin: [
-        "http://localhost:5173"
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://toon-cinema.vercel.app",
+        "https://toon-cinema-react.vercel.app"
     ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
+// ========================================
+// 2. MIDDLEWARE
+// ========================================
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// API
-app.use("/api/movies", movieRoutes);
-app.use("/api/rooms", roomRoutes);
-app.use("/api/showtimes", showtimeRoutes);
-app.use("/api/seats", seatRoutes);
-app.use("/api/products", productRoutes);
+// ========================================
+// 3. TRANG CHỦ BACKEND
+// ========================================
 
-// Trang chủ Backend
 app.get("/", (req, res) => {
     res.send(`
         <!DOCTYPE html>
         <html lang="vi">
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport"
-                  content="width=device-width, initial-scale=1.0">
-            <title>TOON CINEMA Backend API</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>TOON CINEMA Backend</title>
             <style>
-                * {
-                    box-sizing: border-box;
-                }
-
                 body {
                     margin: 0;
                     min-height: 100vh;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    background: #f7f2ff;
                     font-family: Arial, sans-serif;
+                    background: #f8f5ff;
                 }
 
-                .box {
+                .container {
+                    padding: 40px;
+                    border-radius: 20px;
                     background: white;
-                    padding: 45px;
-                    border-radius: 18px;
                     text-align: center;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-                    max-width: 650px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
                 }
 
                 h1 {
-                    color: #7c3aed;
+                    color: #8b5cf6;
                 }
 
                 p {
-                    color: #666;
-                }
-
-                .status {
-                    display: inline-block;
-                    margin-top: 15px;
-                    padding: 10px 20px;
-                    border-radius: 25px;
-                    background: #dcfce7;
-                    color: #166534;
-                    font-weight: bold;
-                }
-
-                a {
-                    display: inline-block;
-                    margin: 20px 8px 0;
-                    color: #7c3aed;
-                    text-decoration: none;
+                    color: #555;
                 }
             </style>
         </head>
-
         <body>
-            <div class="box">
-                <h1>🎬 TOON CINEMA Backend API 🎬</h1>
-
-                <p>
-                    Hệ thống máy chủ đang hoạt động
-                    và sẵn sàng kết nối!
-                </p>
-
-                <div class="status">
-                    ● Backend Online
-                </div>
-
-                <div>
-                    <a href="/api/health">Kiểm tra Database</a>
-                    <a href="/api/movies">Danh sách phim</a>
-                    <a href="/api/rooms">Phòng chiếu</a>
-                    <a href="/api/showtimes">Suất chiếu</a>
-                </div>
+            <div class="container">
+                <h1>🎬 TOON CINEMA</h1>
+                <h2>Backend API</h2>
+                <p>Node.js + Express + TiDB Cloud</p>
+                <p>Server is running successfully!</p>
             </div>
         </body>
         </html>
     `);
 });
 
-// Kiểm tra Backend + MySQL
+// ========================================
+// 4. KIỂM TRA DATABASE
+// ========================================
+
 app.get("/api/health", async (req, res) => {
     try {
         await db.query("SELECT 1");
@@ -125,7 +102,7 @@ app.get("/api/health", async (req, res) => {
             provider: "MySQL"
         });
     } catch (error) {
-        console.error(error);
+        console.error("Database error:", error.message);
 
         res.status(500).json({
             status: "ERROR",
@@ -134,19 +111,34 @@ app.get("/api/health", async (req, res) => {
     }
 });
 
-// Xử lý API không tồn tại
+// ========================================
+// 5. API ROUTES
+// ========================================
+
+app.use("/api/movies", movieRoutes);
+app.use("/api/rooms", roomRoutes);
+app.use("/api/showtimes", showtimeRoutes);
+app.use("/api/seats", seatRoutes);
+app.use("/api/products", productRoutes);
+
+// ========================================
+// 6. XỬ LÝ API KHÔNG TỒN TẠI
+// ========================================
+
 app.use("/api", (req, res) => {
     res.status(404).json({
         message: "API không tồn tại"
     });
 });
 
-// Khởi động server
-const PORT = process.env.PORT || 3000;
+// ========================================
+// 7. KHỞI ĐỘNG SERVER
+// ========================================
 
-app.listen(PORT, () => {
-    console.log("==================================");
+app.listen(PORT, "0.0.0.0", () => {
+    console.log("================================");
     console.log("TOON CINEMA BACKEND");
-    console.log(`http://localhost:${PORT}`);
-    console.log("==================================");
+    console.log(`Server running on port ${PORT}`);
+    console.log("CORS enabled for Vercel");
+    console.log("================================");
 });
