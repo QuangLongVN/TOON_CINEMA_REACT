@@ -1,18 +1,34 @@
 import { useEffect, useState } from "react";
-import { seatAPI, showtimeAPI } from "../services/api";
+import { seatAPI, showtimeAPI, roomAPI } from "../services/api";
 
 export default function Seats() {
     const [showtimes, setShowtimes] = useState([]);
+    const [rooms, setRooms] = useState([]);
     const [selectedShowtime, setSelectedShowtime] = useState("");
     const [bookedSeats, setBookedSeats] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    // LẤY DANH SÁCH SUẤT CHIẾU VÀ PHÒNG
     useEffect(() => {
-        showtimeAPI.getAll()
-            .then((res) => setShowtimes(res.data))
-            .catch(() => alert("Không thể tải suất chiếu."));
+        async function loadData() {
+            try {
+                const [showtimeRes, roomRes] = await Promise.all([
+                    showtimeAPI.getAll(),
+                    roomAPI.getAll()
+                ]);
+
+                setShowtimes(showtimeRes.data);
+                setRooms(roomRes.data);
+            } catch (error) {
+                console.error("Lỗi tải dữ liệu:", error);
+                alert("Không thể tải dữ liệu suất chiếu hoặc phòng.");
+            }
+        }
+
+        loadData();
     }, []);
 
+    // LẤY DANH SÁCH GHẾ ĐÃ ĐẶT
     async function loadSeats(id) {
         if (!id) {
             setBookedSeats([]);
@@ -21,15 +37,19 @@ export default function Seats() {
 
         try {
             setLoading(true);
+
             const res = await seatAPI.getBooked(id);
+
             setBookedSeats(res.data);
-        } catch {
+        } catch (error) {
+            console.error("Lỗi tải ghế:", error);
             alert("Không thể tải danh sách ghế.");
         } finally {
             setLoading(false);
         }
     }
 
+    // ĐẶT / HỦY ĐẶT GHẾ
     async function handleSeatClick(seatNumber) {
         if (!selectedShowtime) return;
 
@@ -39,11 +59,15 @@ export default function Seats() {
 
         try {
             if (booked) {
-                if (!confirm(`Hủy đặt ghế ${seatNumber}?`)) return;
+                if (!window.confirm(`Hủy đặt ghế ${seatNumber}?`)) {
+                    return;
+                }
 
                 await seatAPI.cancel(booked.id);
             } else {
-                if (!confirm(`Đặt ghế ${seatNumber}?`)) return;
+                if (!window.confirm(`Đặt ghế ${seatNumber}?`)) {
+                    return;
+                }
 
                 await seatAPI.book({
                     showtime_id: Number(selectedShowtime),
@@ -52,22 +76,51 @@ export default function Seats() {
             }
 
             await loadSeats(selectedShowtime);
-        } catch (err) {
-            alert(err.response?.data?.message || "Thao tác thất bại.");
+        } catch (error) {
+            console.error("Lỗi thao tác ghế:", error);
+
+            alert(
+                error.response?.data?.message ||
+                "Thao tác thất bại."
+            );
         }
     }
 
+    // SUẤT CHIẾU ĐANG CHỌN
     const currentShowtime = showtimes.find(
         (item) => String(item.id) === String(selectedShowtime)
     );
 
-    // Bản demo hiển thị 80 ghế.
-    // Sẽ đồng bộ với sức chứa thực tế của phòng ở bước hoàn thiện.
-    const seats = Array.from({ length: 80 }, (_, index) => {
-        const row = String.fromCharCode(65 + Math.floor(index / 10));
-        const column = (index % 10) + 1;
-        return `${row}${column}`;
-    });
+    // PHÒNG CHIẾU CỦA SUẤT CHIẾU
+    const currentRoom = rooms.find(
+        (room) =>
+            String(room.id) === String(currentShowtime?.room_id)
+    );
+
+    // LẤY SỐ GHẾ THỰC TẾ TỪ DATABASE
+    const totalSeats = Number(currentRoom?.total_seats || 0);
+
+    // TỰ ĐỘNG TẠO DANH SÁCH GHẾ
+    // Ví dụ: 20 ghế => A1-A10, B1-B10
+    const seats = Array.from(
+        { length: totalSeats },
+        (_, index) => {
+            const rowIndex = Math.floor(index / 10);
+            const column = (index % 10) + 1;
+
+            // A, B, C ... Z, AA, AB ...
+            let row = "";
+            let number = rowIndex + 1;
+
+            while (number > 0) {
+                number--;
+                row = String.fromCharCode(65 + (number % 26)) + row;
+                number = Math.floor(number / 26);
+            }
+
+            return `${row}${column}`;
+        }
+    );
 
     return (
         <div className="panel">
@@ -84,11 +137,17 @@ export default function Seats() {
                 <select
                     value={selectedShowtime}
                     onChange={(e) => {
-                        setSelectedShowtime(e.target.value);
-                        loadSeats(e.target.value);
+                        const id = e.target.value;
+
+                        setSelectedShowtime(id);
+                        setBookedSeats([]);
+
+                        loadSeats(id);
                     }}
                 >
-                    <option value="">-- Chọn suất chiếu --</option>
+                    <option value="">
+                        -- Chọn suất chiếu --
+                    </option>
 
                     {showtimes.map((item) => (
                         <option key={item.id} value={item.id}>
@@ -99,7 +158,7 @@ export default function Seats() {
                 </select>
             </div>
 
-            {currentShowtime && (
+            {currentShowtime && currentRoom && (
                 <>
                     <div className="screen">
                         MÀN HÌNH CHIẾU
@@ -138,6 +197,12 @@ export default function Seats() {
                         </span>
                     </div>
                 </>
+            )}
+
+            {currentShowtime && !currentRoom && (
+                <div className="empty">
+                    Không tìm thấy thông tin phòng chiếu.
+                </div>
             )}
 
             {!currentShowtime && (
