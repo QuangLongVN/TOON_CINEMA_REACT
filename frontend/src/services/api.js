@@ -1,8 +1,8 @@
 import axios from "axios";
 
 const api = axios.create({
-    baseURL: "http://localhost:3000",
-    timeout: 10000
+    baseURL: import.meta.env.VITE_API_URL || "https://toon-cinema-react.onrender.com",
+    timeout: 60000
 });
 
 export const movieAPI = {
