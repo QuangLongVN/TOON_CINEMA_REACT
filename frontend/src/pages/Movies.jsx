@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { movieAPI } from "../services/api";
 
-const emptyForm = {
+const initialForm = {
     title: "",
     genre: "",
     duration: "",
@@ -16,11 +16,12 @@ export default function Movies() {
     const [showModal, setShowModal] = useState(false);
     const [editingMovie, setEditingMovie] = useState(null);
 
-    const [form, setForm] = useState(emptyForm);
+    const [form, setForm] = useState(initialForm);
     const [posterFile, setPosterFile] = useState(null);
     const [posterPreview, setPosterPreview] = useState("");
 
     const [saving, setSaving] = useState(false);
+    const [search, setSearch] = useState("");
 
     const loadMovies = async () => {
         try {
@@ -29,9 +30,11 @@ export default function Movies() {
 
             const response = await movieAPI.getAll();
 
-            setMovies(response.data);
+            setMovies(
+                Array.isArray(response.data) ? response.data : []
+            );
         } catch (err) {
-            console.error(err);
+            console.error("Lỗi tải phim:", err);
             setError("Không thể tải danh sách phim.");
         } finally {
             setLoading(false);
@@ -44,7 +47,7 @@ export default function Movies() {
 
     const openAddModal = () => {
         setEditingMovie(null);
-        setForm({ ...emptyForm });
+        setForm({ ...initialForm });
         setPosterFile(null);
         setPosterPreview("");
         setShowModal(true);
@@ -66,9 +69,11 @@ export default function Movies() {
     };
 
     const closeModal = () => {
+        if (saving) return;
+
         setShowModal(false);
         setEditingMovie(null);
-        setForm({ ...emptyForm });
+        setForm({ ...initialForm });
         setPosterFile(null);
         setPosterPreview("");
     };
@@ -87,20 +92,20 @@ export default function Movies() {
 
         if (!file) return;
 
-        const allowed = [
+        const allowedTypes = [
             "image/jpeg",
             "image/png",
             "image/webp"
         ];
 
-        if (!allowed.includes(file.type)) {
+        if (!allowedTypes.includes(file.type)) {
             alert("Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP.");
             e.target.value = "";
             return;
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            alert("Ảnh không được vượt quá 5MB.");
+            alert("Dung lượng poster không được vượt quá 5MB.");
             e.target.value = "";
             return;
         }
@@ -119,13 +124,25 @@ export default function Movies() {
     const handleSave = async (e) => {
         e.preventDefault();
 
+        if (saving) return;
+
         if (!form.title.trim()) {
             alert("Vui lòng nhập tên phim.");
             return;
         }
 
         if (!editingMovie && !posterFile) {
-            alert("Vui lòng tải poster phim.");
+            alert("Vui lòng chọn ảnh poster.");
+            return;
+        }
+
+        const duration = Number(form.duration);
+
+        if (
+            form.duration !== "" &&
+            (!Number.isInteger(duration) || duration <= 0)
+        ) {
+            alert("Thời lượng phim phải là số nguyên lớn hơn 0.");
             return;
         }
 
@@ -135,7 +152,7 @@ export default function Movies() {
             const formData = new FormData();
 
             formData.append("title", form.title.trim());
-            formData.append("genre", form.genre);
+            formData.append("genre", form.genre.trim());
             formData.append("duration", form.duration);
             formData.append("status", form.status);
 
@@ -144,46 +161,50 @@ export default function Movies() {
             }
 
             if (editingMovie) {
-                await movieAPI.update(
-                    editingMovie.id,
-                    formData
-                );
-
+                await movieAPI.update(editingMovie.id, formData);
                 alert("Cập nhật phim thành công!");
             } else {
                 await movieAPI.create(formData);
-
                 alert("Thêm phim thành công!");
             }
 
-            closeModal();
+            setShowModal(false);
+            setEditingMovie(null);
+            setForm({ ...initialForm });
+            setPosterFile(null);
+            setPosterPreview("");
+
             await loadMovies();
         } catch (err) {
-            console.error(err);
+            console.error("Lỗi lưu phim:", err);
 
-            alert(
+            const message =
                 err.response?.data?.message ||
-                "Không thể lưu phim."
-            );
+                err.response?.data?.error ||
+                err.message ||
+                "Không thể lưu phim.";
+
+            alert(message);
         } finally {
             setSaving(false);
         }
     };
 
     const handleDelete = async (movie) => {
-        const confirmed = window.confirm(
-            `Bạn có chắc muốn xóa phim "${movie.title}"?`
-        );
-
-        if (!confirmed) return;
+        if (
+            !window.confirm(
+                `Bạn có chắc chắn muốn xóa phim "${movie.title}"?`
+            )
+        ) {
+            return;
+        }
 
         try {
             await movieAPI.delete(movie.id);
-
             alert("Xóa phim thành công!");
             await loadMovies();
         } catch (err) {
-            console.error(err);
+            console.error("Lỗi xóa phim:", err);
 
             alert(
                 err.response?.data?.message ||
@@ -191,6 +212,19 @@ export default function Movies() {
             );
         }
     };
+
+    const filteredMovies = movies.filter((movie) => {
+        const keyword = search.toLowerCase().trim();
+
+        return (
+            String(movie.title || "")
+                .toLowerCase()
+                .includes(keyword) ||
+            String(movie.genre || "")
+                .toLowerCase()
+                .includes(keyword)
+        );
+    });
 
     return (
         <div className="movies-page">
@@ -200,32 +234,32 @@ export default function Movies() {
                     color: #25213d;
                 }
 
-                .movies-heading {
+                .movies-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    gap: 15px;
+                    gap: 16px;
                     margin-bottom: 26px;
                 }
 
-                .movies-heading h1 {
+                .movies-header h1 {
                     margin: 0;
                     font-size: 27px;
                     font-weight: 800;
                 }
 
                 .movies-add-btn {
+                    border: none;
+                    border-radius: 12px;
+                    padding: 13px 20px;
                     background: linear-gradient(
                         135deg,
                         #8554ef,
                         #b46be9
                     );
                     color: white;
-                    border: none;
-                    border-radius: 12px;
-                    padding: 13px 20px;
-                    font-size: 15px;
                     font-weight: 700;
+                    font-size: 15px;
                     cursor: pointer;
                 }
 
@@ -237,25 +271,49 @@ export default function Movies() {
                     overflow-x: auto;
                 }
 
-                .movies-card h2 {
+                .movies-card-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 16px;
+                    margin-bottom: 20px;
+                }
+
+                .movies-card-header h2 {
                     margin: 0 0 8px;
                     font-size: 21px;
                 }
 
-                .movies-card p {
+                .movies-card-header p {
+                    margin: 0;
                     color: #9a91ae;
-                    margin-bottom: 25px;
+                    font-size: 14px;
+                }
+
+                .movies-search {
+                    padding: 12px 16px;
+                    border: 1px solid #e6dff1;
+                    border-radius: 10px;
+                    outline: none;
+                    width: 250px;
+                    max-width: 100%;
+                    box-sizing: border-box;
+                }
+
+                .movies-search:focus {
+                    border-color: #a56af0;
                 }
 
                 .movies-table {
                     width: 100%;
-                    min-width: 700px;
+                    min-width: 720px;
                     border-collapse: collapse;
                 }
 
                 .movies-table th {
-                    text-align: left;
                     padding: 16px;
+                    text-align: left;
                     background: #faf8ff;
                     color: #77708e;
                     font-size: 14px;
@@ -301,6 +359,11 @@ export default function Movies() {
                     color: #c7851d;
                 }
 
+                .movies-status.stopped {
+                    background: #f1f1f1;
+                    color: #777;
+                }
+
                 .movies-action {
                     border: none;
                     border-radius: 8px;
@@ -320,32 +383,40 @@ export default function Movies() {
                     color: #e14d4d;
                 }
 
+                .movies-error {
+                    background: #fff0f0;
+                    color: #df3838;
+                    border-radius: 10px;
+                    padding: 15px;
+                    margin-bottom: 20px;
+                }
+
                 .movies-overlay {
                     position: fixed;
                     inset: 0;
+                    z-index: 9999;
                     background: rgba(30, 22, 49, 0.55);
                     display: flex;
-                    align-items: center;
                     justify-content: center;
-                    z-index: 9999;
+                    align-items: center;
                     padding: 20px;
+                    box-sizing: border-box;
                 }
 
                 .movies-modal {
                     background: white;
-                    border-radius: 22px;
                     width: 650px;
                     max-width: 100%;
                     max-height: 92vh;
                     overflow-y: auto;
                     padding: 36px;
+                    border-radius: 22px;
                     box-sizing: border-box;
                 }
 
                 .movies-modal h2 {
                     margin: 0 0 28px;
                     font-size: 23px;
-                    color: #25213d;
                 }
 
                 .movies-form-group {
@@ -354,22 +425,22 @@ export default function Movies() {
 
                 .movies-form-group label {
                     display: block;
+                    margin-bottom: 10px;
                     font-weight: 700;
                     color: #645a7a;
-                    margin-bottom: 10px;
                 }
 
                 .movies-form-group input,
                 .movies-form-group select {
                     width: 100%;
                     height: 56px;
+                    padding: 0 18px;
                     border: 1px solid #e3d9f1;
                     border-radius: 12px;
-                    padding: 0 18px;
                     box-sizing: border-box;
                     font-size: 16px;
-                    color: #302844;
                     background: white;
+                    color: #302844;
                     outline: none;
                 }
 
@@ -382,14 +453,13 @@ export default function Movies() {
                     border: 2px dashed #d9c6f5;
                     border-radius: 14px;
                     padding: 25px;
-                    text-align: center;
                     background: #fcfaff;
+                    text-align: center;
                 }
 
                 .movies-upload-box input {
                     height: auto;
                     padding: 10px;
-                    max-width: 100%;
                 }
 
                 .movies-upload-note {
@@ -415,25 +485,25 @@ export default function Movies() {
                 }
 
                 .movies-cancel-btn {
+                    padding: 13px 24px;
                     background: white;
                     border: 1px solid #e3d9f1;
                     color: #6f6485;
                     border-radius: 12px;
-                    padding: 13px 24px;
                     font-weight: 700;
                     cursor: pointer;
                 }
 
                 .movies-save-btn {
+                    padding: 13px 25px;
+                    border: none;
+                    border-radius: 12px;
                     background: linear-gradient(
                         135deg,
                         #8554ef,
                         #b46be9
                     );
-                    border: none;
                     color: white;
-                    border-radius: 12px;
-                    padding: 13px 25px;
                     font-weight: 700;
                     cursor: pointer;
                 }
@@ -443,16 +513,27 @@ export default function Movies() {
                     cursor: not-allowed;
                 }
 
-                .movies-error {
-                    padding: 15px;
-                    border-radius: 10px;
-                    background: #fff0f0;
-                    color: #df3838;
-                    margin-bottom: 20px;
+                @media (max-width: 600px) {
+                    .movies-page {
+                        padding: 15px;
+                    }
+
+                    .movies-header {
+                        flex-direction: column;
+                        align-items: stretch;
+                    }
+
+                    .movies-card {
+                        padding: 15px;
+                    }
+
+                    .movies-modal {
+                        padding: 22px;
+                    }
                 }
             `}</style>
 
-            <div className="movies-heading">
+            <div className="movies-header">
                 <h1>Quản lý phim</h1>
 
                 <button
@@ -470,11 +551,20 @@ export default function Movies() {
             )}
 
             <div className="movies-card">
-                <h2>Danh sách phim</h2>
+                <div className="movies-card-header">
+                    <div>
+                        <h2>Danh sách phim</h2>
+                        <p>Quản lý thông tin phim trong hệ thống.</p>
+                    </div>
 
-                <p>
-                    Quản lý thông tin phim trong hệ thống.
-                </p>
+                    <input
+                        className="movies-search"
+                        type="text"
+                        placeholder="Tìm kiếm phim..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
 
                 <table className="movies-table">
                     <thead>
@@ -495,14 +585,14 @@ export default function Movies() {
                                     Đang tải dữ liệu...
                                 </td>
                             </tr>
-                        ) : movies.length === 0 ? (
+                        ) : filteredMovies.length === 0 ? (
                             <tr>
                                 <td colSpan="6" align="center">
-                                    Chưa có phim nào.
+                                    Không tìm thấy phim.
                                 </td>
                             </tr>
                         ) : (
-                            movies.map((movie) => (
+                            filteredMovies.map((movie) => (
                                 <tr key={movie.id}>
                                     <td>
                                         {movie.poster ? (
@@ -519,9 +609,7 @@ export default function Movies() {
                                     </td>
 
                                     <td>
-                                        <strong>
-                                            {movie.title}
-                                        </strong>
+                                        <strong>{movie.title}</strong>
                                     </td>
 
                                     <td>
@@ -539,28 +627,26 @@ export default function Movies() {
                                             className={`movies-status ${
                                                 movie.status === "Sắp chiếu"
                                                     ? "upcoming"
+                                                    : movie.status === "Ngừng chiếu"
+                                                    ? "stopped"
                                                     : ""
                                             }`}
                                         >
-                                            {movie.status}
+                                            {movie.status || "Đang chiếu"}
                                         </span>
                                     </td>
 
                                     <td>
                                         <button
                                             className="movies-action movies-edit"
-                                            onClick={() =>
-                                                openEditModal(movie)
-                                            }
+                                            onClick={() => openEditModal(movie)}
                                         >
                                             Sửa
                                         </button>
 
                                         <button
                                             className="movies-action movies-delete"
-                                            onClick={() =>
-                                                handleDelete(movie)
-                                            }
+                                            onClick={() => handleDelete(movie)}
                                         >
                                             Xóa
                                         </button>
@@ -624,7 +710,7 @@ export default function Movies() {
                             </div>
 
                             <div className="movies-form-group">
-                                <label>Tải poster phim</label>
+                                <label>Poster phim</label>
 
                                 <div className="movies-upload-box">
                                     <div
@@ -686,6 +772,7 @@ export default function Movies() {
                                     type="button"
                                     className="movies-cancel-btn"
                                     onClick={closeModal}
+                                    disabled={saving}
                                 >
                                     Hủy
                                 </button>
@@ -697,7 +784,9 @@ export default function Movies() {
                                 >
                                     {saving
                                         ? "Đang lưu..."
-                                        : "Lưu"}
+                                        : editingMovie
+                                        ? "Cập nhật"
+                                        : "Lưu phim"}
                                 </button>
                             </div>
                         </form>
