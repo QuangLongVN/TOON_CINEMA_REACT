@@ -19,8 +19,17 @@ import {
     productAPI
 } from "../services/api";
 
-const API_BASE =
-    import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+function resolveApiBase() {
+    const raw = (
+        import.meta.env.VITE_API_URL || "http://localhost:3000/api"
+    )
+        .trim()
+        .replace(/\/+$/, "");
+
+    return raw.endsWith("/api") ? raw : `${raw}/api`;
+}
+
+const API_BASE = resolveApiBase();
 
 function getStoredUser() {
     try {
@@ -133,7 +142,11 @@ export default function UserHome() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
-            const data = await res.json();
+
+            const contentType = res.headers.get("content-type") || "";
+            const data = contentType.includes("application/json")
+                ? await res.json()
+                : { message: await res.text() };
 
             if (!res.ok) {
                 setAuthMessage({
@@ -150,14 +163,15 @@ export default function UserHome() {
             if (authModal.mode === "register") {
                 setAuthMessage({
                     type: "success",
-                    text: data.message || "Đăng ký tài khoản thành công! Bạn có thể đăng nhập ngay."
+                    text:
+                        data.message ||
+                        "Đăng ký tài khoản thành công! Bạn có thể đăng nhập ngay."
                 });
                 setAuthModal({ open: true, mode: "login" });
                 setAuthForm((prev) => ({ ...prev, password: "" }));
                 return;
             }
 
-            // Đăng nhập thành công
             const loggedUser = data.user || data.data?.user || data;
             const token = data.token || data.data?.token || "";
             if (token) {
@@ -171,7 +185,9 @@ export default function UserHome() {
 
             setAuthMessage({
                 type: "success",
-                text: `Đăng nhập thành công! Chào mừng ${loggedUser.full_name || loggedUser.email}.`
+                text: `Đăng nhập thành công! Chào mừng ${
+                    loggedUser.full_name || loggedUser.email
+                }.`
             });
 
             setTimeout(() => {

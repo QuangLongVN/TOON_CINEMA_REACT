@@ -10,6 +10,7 @@ const showtimeRoutes = require("./routes/showtimeRoutes");
 const seatRoutes = require("./routes/seatRoutes");
 const productRoutes = require("./routes/productRoutes");
 
+
 const db = require("./config/db");
 
 const app = express();
