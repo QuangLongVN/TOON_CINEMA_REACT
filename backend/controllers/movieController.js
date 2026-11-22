@@ -1,7 +1,7 @@
 const db = require("../config/db");
 const cloudinary = require("../config/cloudinary");
 
-// Upload ảnh lên Cloudinary
+// Upload poster lên Cloudinary
 const uploadPoster = async (file) => {
     if (!file) return null;
 
@@ -31,11 +31,12 @@ exports.getAllMovies = async (req, res) => {
             "SELECT * FROM movies ORDER BY id DESC"
         );
 
-        res.json(rows);
+        return res.json(rows);
+
     } catch (error) {
         console.error("Lỗi lấy danh sách phim:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Không thể lấy danh sách phim"
         });
     }
@@ -55,11 +56,12 @@ exports.getMovieById = async (req, res) => {
             });
         }
 
-        res.json(rows[0]);
+        return res.json(rows[0]);
+
     } catch (error) {
         console.error("Lỗi lấy chi tiết phim:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Không thể lấy thông tin phim"
         });
     }
@@ -68,6 +70,9 @@ exports.getMovieById = async (req, res) => {
 // THÊM PHIM
 exports.createMovie = async (req, res) => {
     try {
+        console.log("BODY:", req.body);
+        console.log("FILE:", req.file?.originalname);
+
         const {
             title,
             genre,
@@ -75,7 +80,7 @@ exports.createMovie = async (req, res) => {
             status
         } = req.body || {};
 
-        if (!title || !title.trim()) {
+        if (!title || !String(title).trim()) {
             return res.status(400).json({
                 message: "Vui lòng nhập tên phim"
             });
@@ -92,7 +97,7 @@ exports.createMovie = async (req, res) => {
              (title, genre, duration, poster, status)
              VALUES (?, ?, ?, ?, ?)`,
             [
-                title.trim(),
+                String(title).trim(),
                 genre || null,
                 duration ? Number(duration) : null,
                 poster,
@@ -100,16 +105,16 @@ exports.createMovie = async (req, res) => {
             ]
         );
 
-        res.status(201).json({
+        return res.status(201).json({
             message: "Thêm phim thành công",
             id: result.insertId,
             poster
         });
 
     } catch (error) {
-        console.error("Lỗi thêm phim:", error);
+        console.error("LỖI THÊM PHIM:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Không thể thêm phim",
             error: error.message
         });
@@ -156,26 +161,37 @@ exports.updateMovie = async (req, res) => {
                  status = ?
              WHERE id = ?`,
             [
-                title !== undefined ? title : oldMovie.title,
-                genre !== undefined ? genre : oldMovie.genre,
+                title !== undefined
+                    ? String(title).trim()
+                    : oldMovie.title,
+
+                genre !== undefined
+                    ? genre
+                    : oldMovie.genre,
+
                 duration !== undefined
                     ? (duration ? Number(duration) : null)
                     : oldMovie.duration,
+
                 poster,
-                status !== undefined ? status : oldMovie.status,
+
+                status !== undefined
+                    ? status
+                    : oldMovie.status,
+
                 id
             ]
         );
 
-        res.json({
+        return res.json({
             message: "Cập nhật phim thành công",
             poster
         });
 
     } catch (error) {
-        console.error("Lỗi cập nhật phim:", error);
+        console.error("LỖI CẬP NHẬT PHIM:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Không thể cập nhật phim",
             error: error.message
         });
@@ -196,14 +212,14 @@ exports.deleteMovie = async (req, res) => {
             });
         }
 
-        res.json({
+        return res.json({
             message: "Xóa phim thành công"
         });
 
     } catch (error) {
-        console.error("Lỗi xóa phim:", error);
+        console.error("LỖI XÓA PHIM:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Không thể xóa phim",
             error: error.message
         });

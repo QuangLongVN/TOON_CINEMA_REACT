@@ -1,6 +1,5 @@
 const express = require("express");
 const multer = require("multer");
-
 const movieController = require("../controllers/movieController");
 
 const router = express.Router();
@@ -22,10 +21,22 @@ const upload = multer({
         if (allowedTypes.includes(file.mimetype)) {
             cb(null, true);
         } else {
-            cb(new Error("Chỉ hỗ trợ ảnh JPG, PNG, WEBP"));
+            cb(new Error("Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP"));
         }
     }
 });
+
+const uploadPoster = (req, res, next) => {
+    upload.single("poster")(req, res, (error) => {
+        if (error) {
+            return res.status(400).json({
+                message: error.message
+            });
+        }
+
+        next();
+    });
+};
 
 // Lấy danh sách phim
 router.get("/", movieController.getAllMovies);
@@ -33,19 +44,11 @@ router.get("/", movieController.getAllMovies);
 // Lấy chi tiết phim
 router.get("/:id", movieController.getMovieById);
 
-// Thêm phim và tải poster
-router.post(
-    "/",
-    upload.single("poster"),
-    movieController.createMovie
-);
+// Thêm phim
+router.post("/", uploadPoster, movieController.createMovie);
 
-// Sửa phim và thay poster
-router.put(
-    "/:id",
-    upload.single("poster"),
-    movieController.updateMovie
-);
+// Sửa phim
+router.put("/:id", uploadPoster, movieController.updateMovie);
 
 // Xóa phim
 router.delete("/:id", movieController.deleteMovie);

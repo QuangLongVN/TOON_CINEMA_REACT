@@ -1,12 +1,30 @@
 import axios from "axios";
 
+const rawBase =
+    import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+// Loại bỏ /api ở cuối nếu có để tránh bị lặp /api/api/... khi gọi endpoint có /api/...
+const normalizedBase = String(rawBase)
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "");
+
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || "https://toon-cinema-react.onrender.com",
-    timeout: 60000
+    baseURL: normalizedBase || "http://localhost:3000",
+    timeout: 30000
+});
+
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem("toon_token");
+    if (token && !config.headers.Authorization) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
 });
 
 export const movieAPI = {
     getAll: () => api.get("/api/movies"),
+    getById: (id) => api.get(`/api/movies/${id}`),
     create: (data) => api.post("/api/movies", data),
     update: (id, data) => api.put(`/api/movies/${id}`, data),
     delete: (id) => api.delete(`/api/movies/${id}`)

@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 
+const authRoutes = require("./routes/authRoutes");
 const movieRoutes = require("./routes/movieRoutes");
 const roomRoutes = require("./routes/roomRoutes");
 const showtimeRoutes = require("./routes/showtimeRoutes");
@@ -115,6 +116,7 @@ app.get("/api/health", async (req, res) => {
 // 5. API ROUTES
 // ========================================
 
+app.use("/api/auth", authRoutes);
 app.use("/api/movies", movieRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/showtimes", showtimeRoutes);

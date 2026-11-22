@@ -123,19 +123,6 @@ export default function Dashboard() {
                     );
                 })}
             </div>
-
-            <div className="panel">
-                <h3>Giới thiệu hệ thống</h3>
-                <p>
-                    TOON CINEMA sử dụng React cho Frontend,
-                    Node.js và Express cho Backend,
-                    MySQL để lưu trữ dữ liệu.
-                </p>
-                <p>
-                    Sử dụng menu bên trái để quản lý
-                    các chức năng của rạp phim.
-                </p>
-            </div>
         </div>
     );
 }
