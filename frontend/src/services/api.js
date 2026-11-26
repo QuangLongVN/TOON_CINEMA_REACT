@@ -58,3 +58,9 @@ export const productAPI = {
 };
 
 export default api;
+
+export const ticketAPI = {
+    create: (data) => api.post("/api/tickets", data),
+    getMine: () => api.get("/api/tickets/mine"),
+    check: (code) => api.get(`/api/tickets/check/${encodeURIComponent(code)}`)
+};

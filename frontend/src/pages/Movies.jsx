@@ -1,3 +1,4 @@
+import { notify } from "../components/NotificationHost";
 import { useEffect, useState } from "react";
 import { movieAPI } from "../services/api";
 
@@ -99,13 +100,13 @@ export default function Movies() {
         ];
 
         if (!allowedTypes.includes(file.type)) {
-            alert("Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP.");
+            notify("Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP.");
             e.target.value = "";
             return;
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            alert("Dung lượng poster không được vượt quá 5MB.");
+            notify("Dung lượng poster không được vượt quá 5MB.");
             e.target.value = "";
             return;
         }
@@ -127,12 +128,12 @@ export default function Movies() {
         if (saving) return;
 
         if (!form.title.trim()) {
-            alert("Vui lòng nhập tên phim.");
+            notify("Vui lòng nhập tên phim.");
             return;
         }
 
         if (!editingMovie && !posterFile) {
-            alert("Vui lòng chọn ảnh poster.");
+            notify("Vui lòng chọn ảnh poster.");
             return;
         }
 
@@ -142,7 +143,7 @@ export default function Movies() {
             form.duration !== "" &&
             (!Number.isInteger(duration) || duration <= 0)
         ) {
-            alert("Thời lượng phim phải là số nguyên lớn hơn 0.");
+            notify("Thời lượng phim phải là số nguyên lớn hơn 0.");
             return;
         }
 
@@ -162,10 +163,10 @@ export default function Movies() {
 
             if (editingMovie) {
                 await movieAPI.update(editingMovie.id, formData);
-                alert("Cập nhật phim thành công!");
+                notify("Cập nhật phim thành công!");
             } else {
                 await movieAPI.create(formData);
-                alert("Thêm phim thành công!");
+                notify("Thêm phim thành công!");
             }
 
             setShowModal(false);
@@ -184,13 +185,18 @@ export default function Movies() {
                 err.message ||
                 "Không thể lưu phim.";
 
-            alert(message);
+            notify(message);
         } finally {
             setSaving(false);
         }
     };
 
     const handleDelete = async (movie) => {
+        if (String(movie.status || "").trim().toLowerCase() === "đang chiếu") {
+            notify(`Không thể xóa phim "${movie.title}" vì phim đang chiếu.`, "warning");
+            return;
+        }
+
         if (
             !window.confirm(
                 `Bạn có chắc chắn muốn xóa phim "${movie.title}"?`
@@ -201,12 +207,12 @@ export default function Movies() {
 
         try {
             await movieAPI.delete(movie.id);
-            alert("Xóa phim thành công!");
+            notify("Xóa phim thành công!");
             await loadMovies();
         } catch (err) {
             console.error("Lỗi xóa phim:", err);
 
-            alert(
+            notify(
                 err.response?.data?.message ||
                 "Không thể xóa phim."
             );

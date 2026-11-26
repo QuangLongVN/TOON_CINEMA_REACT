@@ -61,3 +61,28 @@ CREATE TABLE IF NOT EXISTS products (
     image VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Bảng tài khoản (tạo nếu hệ thống chưa có)
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(150) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Bảng vé: lưu mã vé thật và gắn với tài khoản đã đặt
+CREATE TABLE IF NOT EXISTS tickets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ticket_code VARCHAR(32) NOT NULL UNIQUE,
+    user_id INT NOT NULL,
+    showtime_id INT NOT NULL,
+    seats JSON NOT NULL,
+    combos JSON NULL,
+    total DECIMAL(12,2) NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'valid',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_tickets_user (user_id),
+    INDEX idx_tickets_showtime (showtime_id)
+);

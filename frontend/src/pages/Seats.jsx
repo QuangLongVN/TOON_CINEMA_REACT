@@ -1,3 +1,4 @@
+import { notify } from "../components/NotificationHost";
 import { useEffect, useState } from "react";
 import { seatAPI, showtimeAPI } from "../services/api";
 
@@ -16,7 +17,7 @@ export default function Seats() {
             })
             .catch((error) => {
                 console.error("Lỗi tải suất chiếu:", error);
-                alert("Không thể tải suất chiếu.");
+                notify("Không thể tải suất chiếu.");
             });
     }, []);
 
@@ -36,7 +37,7 @@ export default function Seats() {
             );
         } catch (error) {
             console.error("Lỗi tải ghế:", error);
-            alert("Không thể tải danh sách ghế.");
+            notify("Không thể tải danh sách ghế.");
         } finally {
             setLoading(false);
         }
@@ -74,7 +75,7 @@ export default function Seats() {
         } catch (error) {
             console.error("Lỗi thao tác ghế:", error);
 
-            alert(
+            notify(
                 error.response?.data?.message ||
                 "Thao tác thất bại."
             );

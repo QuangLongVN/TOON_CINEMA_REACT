@@ -1,3 +1,4 @@
+import { notify } from "../components/NotificationHost";
 import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { productAPI } from "../services/api";
@@ -20,7 +21,7 @@ export default function Products() {
             const res = await productAPI.getAll();
             setProducts(res.data);
         } catch {
-            alert("Không thể tải sản phẩm.");
+            notify("Không thể tải sản phẩm.");
         }
     }
 
@@ -65,7 +66,7 @@ export default function Products() {
             setShowForm(false);
             await loadProducts();
         } catch (err) {
-            alert(err.response?.data?.message || "Lỗi lưu sản phẩm.");
+            notify(err.response?.data?.message || "Lỗi lưu sản phẩm.");
         }
     }
 
@@ -76,7 +77,7 @@ export default function Products() {
             await productAPI.delete(id);
             await loadProducts();
         } catch {
-            alert("Không thể xóa sản phẩm.");
+            notify("Không thể xóa sản phẩm.");
         }
     }
 

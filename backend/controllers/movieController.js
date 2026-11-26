@@ -201,6 +201,21 @@ exports.updateMovie = async (req, res) => {
 // XÓA PHIM
 exports.deleteMovie = async (req, res) => {
     try {
+        const [movies] = await db.query(
+            "SELECT id, title, status FROM movies WHERE id = ?",
+            [req.params.id]
+        );
+
+        if (!movies.length) {
+            return res.status(404).json({ message: "Không tìm thấy phim" });
+        }
+
+        if (String(movies[0].status || "").trim().toLowerCase() === "đang chiếu") {
+            return res.status(409).json({
+                message: `Không thể xóa phim "${movies[0].title}" vì phim đang chiếu.`
+            });
+        }
+
         const [result] = await db.query(
             "DELETE FROM movies WHERE id = ?",
             [req.params.id]

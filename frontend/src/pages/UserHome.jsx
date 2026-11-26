@@ -1,3 +1,5 @@
+
+import { notify } from "../components/NotificationHost";
 import { useEffect, useState, useMemo } from "react";
 import {
     Film,
@@ -16,7 +18,8 @@ import {
     movieAPI,
     showtimeAPI,
     seatAPI,
-    productAPI
+    productAPI,
+    ticketAPI
 } from "../services/api";
 
 function resolveApiBase() {
@@ -50,13 +53,22 @@ export default function UserHome() {
     const [statusFilter, setStatusFilter] = useState("ALL");
 
     // State cho Modal Đăng nhập / Đăng ký
-    const [authModal, setAuthModal] = useState({ open: false, mode: "login" });
+    const [authModal, setAuthModal] = useState({
+        open: false,
+        mode: "login"
+    });
+
     const [authForm, setAuthForm] = useState({
         full_name: "",
         email: "",
         password: ""
     });
-    const [authMessage, setAuthMessage] = useState({ type: "", text: "" });
+
+    const [authMessage, setAuthMessage] = useState({
+        type: "",
+        text: ""
+    });
+
     const [authSubmitting, setAuthSubmitting] = useState(false);
 
     const [selectedMovie, setSelectedMovie] = useState(null);
@@ -64,21 +76,33 @@ export default function UserHome() {
     const [bookedSeats, setBookedSeats] = useState([]);
     const [selectedSeats, setSelectedSeats] = useState([]);
     const [cartProducts, setCartProducts] = useState({});
+
     const [customerName, setCustomerName] = useState(
         () => getStoredUser()?.full_name || ""
     );
+
     const [bookingLoading, setBookingLoading] = useState(false);
     const [ticketReceipt, setTicketReceipt] = useState(null);
+    const [myTickets, setMyTickets] = useState([]);
 
+    const [ticketLookupCode, setTicketLookupCode] = useState("");
+    const [ticketLookupResult, setTicketLookupResult] = useState(null);
+    const [ticketLookupLoading, setTicketLookupLoading] = useState(false);
+
+    // ============================================
+    // TẢI DỮ LIỆU BAN ĐẦU
+    // ============================================
     useEffect(() => {
         async function fetchInitialData() {
             try {
                 setLoading(true);
+
                 const [mRes, sRes, pRes] = await Promise.all([
                     movieAPI.getAll(),
                     showtimeAPI.getAll(),
                     productAPI.getAll()
                 ]);
+
                 setMovies(Array.isArray(mRes.data) ? mRes.data : []);
                 setShowtimes(Array.isArray(sRes.data) ? sRes.data : []);
                 setProducts(Array.isArray(pRes.data) ? pRes.data : []);
@@ -88,20 +112,41 @@ export default function UserHome() {
                 setLoading(false);
             }
         }
+
         fetchInitialData();
     }, []);
 
+    // ============================================
+    // TẢI VÉ CỦA USER KHI ĐĂNG NHẬP
+    // ============================================
+    useEffect(() => {
+        if (currentUser?.id) {
+            loadMyTickets();
+        }
+    }, [currentUser?.id]);
+
     function openAuth(mode) {
         setAuthMessage({ type: "", text: "" });
-        setAuthForm({ full_name: "", email: "", password: "" });
+        setAuthForm({
+            full_name: "",
+            email: "",
+            password: ""
+        });
         setAuthModal({ open: true, mode });
     }
 
     function closeAuth() {
-        setAuthModal((prev) => ({ ...prev, open: false }));
+        setAuthModal((prev) => ({
+            ...prev,
+            open: false
+        }));
+
         setAuthMessage({ type: "", text: "" });
     }
 
+    // ============================================
+    // ĐĂNG NHẬP / ĐĂNG KÝ
+    // ============================================
     async function handleAuthSubmit(e) {
         e.preventDefault();
         setAuthMessage({ type: "", text: "" });
@@ -113,7 +158,11 @@ export default function UserHome() {
             });
             return;
         }
-        if (authModal.mode === "register" && !authForm.full_name.trim()) {
+
+        if (
+            authModal.mode === "register" &&
+            !authForm.full_name.trim()
+        ) {
             setAuthMessage({
                 type: "error",
                 text: "Vui lòng nhập họ tên để đăng ký tài khoản!"
@@ -128,7 +177,10 @@ export default function UserHome() {
 
         const payload =
             authModal.mode === "login"
-                ? { email: authForm.email.trim(), password: authForm.password }
+                ? {
+                      email: authForm.email.trim(),
+                      password: authForm.password
+                  }
                 : {
                       full_name: authForm.full_name.trim(),
                       email: authForm.email.trim(),
@@ -137,13 +189,17 @@ export default function UserHome() {
 
         try {
             setAuthSubmitting(true);
+
             const res = await fetch(endpoint, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json"
+                },
                 body: JSON.stringify(payload)
             });
 
             const contentType = res.headers.get("content-type") || "";
+
             const data = contentType.includes("application/json")
                 ? await res.json()
                 : { message: await res.text() };
@@ -167,18 +223,35 @@ export default function UserHome() {
                         data.message ||
                         "Đăng ký tài khoản thành công! Bạn có thể đăng nhập ngay."
                 });
-                setAuthModal({ open: true, mode: "login" });
-                setAuthForm((prev) => ({ ...prev, password: "" }));
+
+                setAuthModal({
+                    open: true,
+                    mode: "login"
+                });
+
+                setAuthForm((prev) => ({
+                    ...prev,
+                    password: ""
+                }));
+
                 return;
             }
 
             const loggedUser = data.user || data.data?.user || data;
             const token = data.token || data.data?.token || "";
+
             if (token) {
                 localStorage.setItem("toon_token", token);
             }
-            localStorage.setItem("toon_user", JSON.stringify(loggedUser));
+
+            localStorage.setItem(
+                "toon_user",
+                JSON.stringify(loggedUser)
+            );
+
             setCurrentUser(loggedUser);
+            await loadMyTickets();
+
             if (loggedUser?.full_name) {
                 setCustomerName(loggedUser.full_name);
             }
@@ -195,6 +268,7 @@ export default function UserHome() {
             }, 600);
         } catch (err) {
             console.error("Lỗi xác thực:", err);
+
             setAuthMessage({
                 type: "error",
                 text: "Không thể kết nối tới máy chủ. Vui lòng thử lại!"
@@ -204,42 +278,131 @@ export default function UserHome() {
         }
     }
 
+    // ============================================
+    // LẤY DANH SÁCH VÉ CỦA TÔI
+    // ============================================
+    async function loadMyTickets() {
+        try {
+            const response = await ticketAPI.getMine();
+
+            setMyTickets(
+                Array.isArray(response.data) ? response.data : []
+            );
+        } catch (error) {
+            console.error("Lỗi tải vé của tôi:", error);
+
+            notify(
+                error.response?.data?.message ||
+                    "Không thể tải danh sách vé.",
+                "error"
+            );
+        }
+    }
+
+    // ============================================
+    // KIỂM TRA MÃ VÉ
+    // ============================================
+    async function handleTicketLookup(e) {
+        e.preventDefault();
+
+        if (!ticketLookupCode.trim()) {
+            notify("Vui lòng nhập mã vé cần kiểm tra.", "warning");
+            return;
+        }
+
+        try {
+            setTicketLookupLoading(true);
+
+            const response = await ticketAPI.check(
+                ticketLookupCode.trim()
+            );
+
+            setTicketLookupResult(response.data);
+
+            notify("Tìm thấy vé trong tài khoản của bạn.", "success");
+        } catch (error) {
+            setTicketLookupResult(null);
+
+            notify(
+                error.response?.data?.message || "Không tìm thấy vé.",
+                "error"
+            );
+        } finally {
+            setTicketLookupLoading(false);
+        }
+    }
+
+    // ============================================
+    // ĐĂNG XUẤT
+    // ============================================
     function handleLogout() {
         localStorage.removeItem("toon_token");
         localStorage.removeItem("toon_user");
+
         setCurrentUser(null);
+        setMyTickets([]);
+        setTicketLookupResult(null);
     }
 
+    // ============================================
+    // KIỂM TRA QUYỀN ADMIN
+    // ============================================
     function handleAdminAccess() {
         if (!currentUser) {
-            alert("Vui lòng đăng nhập bằng tài khoản Admin để truy cập Trang Quản Trị!");
+            notify(
+                "Vui lòng đăng nhập bằng tài khoản Admin để truy cập Trang Quản Trị!"
+            );
+
             openAuth("login");
             return;
         }
-        if (String(currentUser.role || "").toLowerCase() !== "admin") {
-            alert("Tài khoản hiện tại không có quyền Admin để truy cập Trang Quản Trị!");
+
+        if (
+            String(currentUser.role || "").toLowerCase() !== "admin"
+        ) {
+            notify(
+                "Tài khoản hiện tại không có quyền Admin để truy cập Trang Quản Trị!"
+            );
             return;
         }
+
         window.location.href = "/admin";
     }
 
+    // ============================================
+    // LỌC PHIM
+    // ============================================
     const filteredMovies = useMemo(() => {
         if (statusFilter === "ALL") return movies;
+
         return movies.filter(
-            (m) => (m.status || "Đang chiếu") === statusFilter
+            (movie) =>
+                (movie.status || "Đang chiếu") === statusFilter
         );
     }, [movies, statusFilter]);
 
+    // ============================================
+    // LẤY SUẤT CHIẾU CỦA PHIM ĐANG CHỌN
+    // ============================================
     const movieShowtimes = useMemo(() => {
         if (!selectedMovie) return [];
+
         return showtimes.filter(
-            (s) => Number(s.movie_id) === Number(selectedMovie.id)
+            (showtime) =>
+                Number(showtime.movie_id) ===
+                Number(selectedMovie.id)
         );
     }, [showtimes, selectedMovie]);
 
+    // ============================================
+    // MỞ MODAL ĐẶT VÉ
+    // ============================================
     function openMovieBooking(movie) {
         if (!currentUser) {
-            alert("Vui lòng đăng nhập trước khi chọn suất và đặt vé!");
+            notify(
+                "Vui lòng đăng nhập trước khi chọn suất và đặt vé!"
+            );
+
             openAuth("login");
             return;
         }
@@ -250,113 +413,223 @@ export default function UserHome() {
         setSelectedSeats([]);
         setCartProducts({});
         setTicketReceipt(null);
+
         if (currentUser?.full_name && !customerName) {
             setCustomerName(currentUser.full_name);
         }
     }
 
+    // ============================================
+    // CHỌN SUẤT CHIẾU
+    // ============================================
     async function handleSelectShowtime(st) {
         setSelectedShowtime(st);
         setSelectedSeats([]);
+
         try {
             const res = await seatAPI.getBooked(st.id);
-            const list = Array.isArray(res.data) ? res.data : [];
-            setBookedSeats(list.map((item) => item.seat_number));
+
+            const list = Array.isArray(res.data)
+                ? res.data
+                : [];
+
+            setBookedSeats(
+                list.map((item) => item.seat_number)
+            );
         } catch (err) {
             console.error("Lỗi tải ghế:", err);
-            alert("Không thể tải sơ đồ ghế của suất chiếu này.");
+
+            notify(
+                "Không thể tải sơ đồ ghế của suất chiếu này."
+            );
         }
     }
 
+    // ============================================
+    // CHỌN / BỎ CHỌN GHẾ
+    // ============================================
     function toggleSeat(seatNumber) {
         if (bookedSeats.includes(seatNumber)) return;
+
         setSelectedSeats((prev) =>
             prev.includes(seatNumber)
-                ? prev.filter((s) => s !== seatNumber)
+                ? prev.filter((seat) => seat !== seatNumber)
                 : [...prev, seatNumber]
         );
     }
 
+    // ============================================
+    // CẬP NHẬT SỐ LƯỢNG SẢN PHẨM
+    // ============================================
     function updateProductQty(product, delta) {
         setCartProducts((prev) => {
             const current = prev[product.id] || 0;
+
             const next = Math.max(
                 0,
-                Math.min(product.quantity ?? 99, current + delta)
+                Math.min(
+                    Number(product.quantity ?? 99),
+                    current + delta
+                )
             );
+
             const copy = { ...prev };
-            if (next === 0) delete copy[product.id];
-            else copy[product.id] = next;
+
+            if (next === 0) {
+                delete copy[product.id];
+            } else {
+                copy[product.id] = next;
+            }
+
             return copy;
         });
     }
 
+    // ============================================
+    // TÍNH TIỀN GHẾ
+    // ============================================
     const seatTotal = selectedShowtime
-        ? selectedSeats.length * Number(selectedShowtime.price || 0)
+        ? selectedSeats.length *
+          Number(selectedShowtime.price || 0)
         : 0;
 
+    // ============================================
+    // TÍNH TIỀN SẢN PHẨM
+    // ============================================
     const productTotal = Object.entries(cartProducts).reduce(
         (sum, [prodId, qty]) => {
-            const prod = products.find((p) => Number(p.id) === Number(prodId));
-            return sum + (prod ? Number(prod.price) * qty : 0);
+            const product = products.find(
+                (item) => Number(item.id) === Number(prodId)
+            );
+
+            return (
+                sum +
+                (product
+                    ? Number(product.price) * qty
+                    : 0)
+            );
         },
         0
     );
 
     const grandTotal = seatTotal + productTotal;
 
+    // ============================================
+    // XÁC NHẬN ĐẶT VÉ
+    // ============================================
     async function handleConfirmBooking() {
         if (!selectedShowtime || selectedSeats.length === 0) {
-            alert("Vui lòng chọn ít nhất 1 ghế!");
+            notify("Vui lòng chọn ít nhất 1 ghế!", "warning");
             return;
         }
 
         try {
             setBookingLoading(true);
-            for (const seat of selectedSeats) {
-                await seatAPI.book({
-                    showtime_id: Number(selectedShowtime.id),
-                    seat_number: seat
-                });
-            }
 
-            const chosenCombos = Object.entries(cartProducts).map(([id, qty]) => {
-                const p = products.find((item) => Number(item.id) === Number(id));
-                return { name: p?.name, qty };
-            });
+            // Gửi ID sản phẩm và số lượng lên backend
+            const chosenCombos = Object.entries(cartProducts)
+                .map(([id, qty]) => ({
+                    product_id: Number(id),
+                    quantity: Number(qty)
+                }))
+                .filter(
+                    (item) =>
+                        item.product_id > 0 &&
+                        item.quantity > 0
+                );
 
-            setTicketReceipt({
-                code: "TC-" + Math.floor(100000 + Math.random() * 900000),
-                customer:
-                    customerName.trim() ||
-                    currentUser?.full_name ||
-                    "Khách hàng TOON",
-                movieTitle: selectedMovie.title,
-                roomName: selectedShowtime.room_name,
-                startTime: selectedShowtime.start_time,
-                seats: [...selectedSeats],
+            const response = await ticketAPI.create({
+                showtime_id: Number(selectedShowtime.id),
+                seats: selectedSeats,
                 combos: chosenCombos,
                 total: grandTotal
             });
 
-            setBookedSeats((prev) => [...prev, ...selectedSeats]);
+            const ticket = response.data.ticket;
+
+            setTicketReceipt({
+                code: ticket.code || ticket.ticket_code,
+                customer:
+                    ticket.customer ||
+                    currentUser?.full_name ||
+                    "Khách hàng TOON",
+                movieTitle:
+                    ticket.movieTitle || selectedMovie.title,
+                roomName:
+                    ticket.roomName || selectedShowtime.room_name,
+                startTime:
+                    ticket.startTime || selectedShowtime.start_time,
+                seats: ticket.seats || [...selectedSeats],
+                combos: ticket.combos || [],
+                total: Number(ticket.total ?? grandTotal)
+            });
+
+            setBookedSeats((prev) => [
+                ...prev,
+                ...selectedSeats
+            ]);
+
             setSelectedSeats([]);
+            setCartProducts({});
+
+            // Cập nhật tồn kho trên giao diện
+            setProducts((prev) =>
+                prev.map((product) => {
+                    const ordered = chosenCombos.find(
+                        (item) =>
+                            item.product_id === Number(product.id)
+                    );
+
+                    return ordered
+                        ? {
+                              ...product,
+                              quantity: Math.max(
+                                  0,
+                                  Number(product.quantity) -
+                                      ordered.quantity
+                              )
+                          }
+                        : product;
+                })
+            );
+
+            await loadMyTickets();
+
+            notify(
+                "Đặt vé thành công! Mã vé đã được lưu vào tài khoản.",
+                "success"
+            );
         } catch (err) {
-            console.error("Lỗi đặt vé:", err);
-            alert(
+            console.error(
+                "Lỗi đặt vé:",
+                err.response?.data || err
+            );
+
+            notify(
                 err.response?.data?.message ||
-                    "Có ghế vừa được người khác đặt, vui lòng chọn lại!"
+                    "Đặt vé thất bại. Vui lòng kiểm tra lại ghế và sản phẩm!",
+                "error"
             );
         } finally {
             setBookingLoading(false);
         }
     }
 
-    const allSeats = Array.from({ length: 80 }, (_, idx) => {
-        const row = String.fromCharCode(65 + Math.floor(idx / 10));
-        const col = (idx % 10) + 1;
-        return `${row}${col}`;
-    });
+    // ============================================
+    // DANH SÁCH 80 GHẾ
+    // ============================================
+    const allSeats = Array.from(
+        { length: 80 },
+        (_, idx) => {
+            const row = String.fromCharCode(
+                65 + Math.floor(idx / 10)
+            );
+
+            const col = (idx % 10) + 1;
+
+            return `${row}${col}`;
+        }
+    );
 
     return (
         <div className="user-portal">
@@ -364,27 +637,45 @@ export default function UserHome() {
                 <div className="user-nav-inner">
                     <div className="user-logo">
                         <span className="brand-icon">🎬</span>
+
                         <div>
                             <strong>TOON CINEMA</strong>
-                            <small>Thế giới điện ảnh & hoạt hình</small>
+                            <small>
+                                Thế giới điện ảnh & hoạt hình
+                            </small>
                         </div>
                     </div>
 
                     <nav className="user-nav-links">
-                        <a href="#movies-section">Phim chiếu rạp</a>
-                        <a href="#combos-section">Bắp & Nước</a>
+                        <a href="#movies-section">
+                            Phim chiếu rạp
+                        </a>
+
+                        <a href="#combos-section">
+                            Bắp & Nước
+                        </a>
+
+                        {currentUser && (
+                            <a href="#my-tickets-section">
+                                Vé của tôi
+                            </a>
+                        )}
 
                         {currentUser ? (
                             <div className="user-account-box">
                                 <span className="user-greeting">
-                                    Xin chào, {currentUser.full_name || currentUser.email}
+                                    Xin chào,{" "}
+                                    {currentUser.full_name ||
+                                        currentUser.email}
                                 </span>
+
                                 <button
                                     type="button"
                                     className="btn-logout-mini"
                                     onClick={handleLogout}
                                 >
-                                    <LogOut size={15} /> Thoát
+                                    <LogOut size={15} />
+                                    Thoát
                                 </button>
                             </div>
                         ) : (
@@ -394,8 +685,10 @@ export default function UserHome() {
                                     className="btn-login-nav"
                                     onClick={() => openAuth("login")}
                                 >
-                                    <LogIn size={15} /> Đăng nhập
+                                    <LogIn size={15} />
+                                    Đăng nhập
                                 </button>
+
                                 <button
                                     type="button"
                                     className="btn-register-nav"
@@ -418,49 +711,88 @@ export default function UserHome() {
                 </div>
             </header>
 
+            {/* HERO */}
             <section className="user-hero">
                 <div className="user-hero-content">
                     <span className="hero-badge">
-                        <Sparkles size={14} /> ĐẶT VÉ TRỰC TUYẾN NHANH CHÓNG
+                        <Sparkles size={14} />
+                        ĐẶT VÉ TRỰC TUYẾN NHANH CHÓNG
                     </span>
-                    <h1>Trải nghiệm điện ảnh sống động cùng TOON CINEMA</h1>
+
+                    <h1>
+                        Trải nghiệm điện ảnh sống động cùng TOON
+                        CINEMA
+                    </h1>
+
                     <p>
-                        Chọn bộ phim yêu thích, giữ chỗ ngồi đẹp nhất trong 30 giây và thưởng thức combo bắp nước nóng hổi.
+                        Chọn bộ phim yêu thích, giữ chỗ ngồi đẹp
+                        nhất trong 30 giây và thưởng thức combo
+                        bắp nước nóng hổi.
                     </p>
-                    <a href="#movies-section" className="btn-primary-hero">
-                        <Ticket size={18} /> Đặt vé ngay
+
+                    <a
+                        href="#movies-section"
+                        className="btn-primary-hero"
+                    >
+                        <Ticket size={18} />
+                        Đặt vé ngay
                     </a>
                 </div>
             </section>
 
-            <section id="movies-section" className="user-section">
+            {/* DANH SÁCH PHIM */}
+            <section
+                id="movies-section"
+                className="user-section"
+            >
                 <div className="section-head">
                     <div>
                         <h2>Danh Sách Phim</h2>
-                        <p>Chọn phim để xem lịch chiếu và đặt ghế</p>
+                        <p>
+                            Chọn phim để xem lịch chiếu và đặt ghế
+                        </p>
                     </div>
 
                     <div className="filter-tabs">
-                        {["ALL", "Đang chiếu", "Sắp chiếu"].map((tab) => (
+                        {[
+                            "ALL",
+                            "Đang chiếu",
+                            "Sắp chiếu"
+                        ].map((tab) => (
                             <button
                                 key={tab}
-                                className={`filter-tab ${statusFilter === tab ? "active" : ""}`}
-                                onClick={() => setStatusFilter(tab)}
+                                className={`filter-tab ${
+                                    statusFilter === tab
+                                        ? "active"
+                                        : ""
+                                }`}
+                                onClick={() =>
+                                    setStatusFilter(tab)
+                                }
                             >
-                                {tab === "ALL" ? "Tất cả phim" : tab}
+                                {tab === "ALL"
+                                    ? "Tất cả phim"
+                                    : tab}
                             </button>
                         ))}
                     </div>
                 </div>
 
                 {loading ? (
-                    <div className="empty-state">Đang tải danh sách phim...</div>
+                    <div className="empty-state">
+                        Đang tải danh sách phim...
+                    </div>
                 ) : filteredMovies.length === 0 ? (
-                    <div className="empty-state">Chưa có phim nào trong mục này.</div>
+                    <div className="empty-state">
+                        Chưa có phim nào trong mục này.
+                    </div>
                 ) : (
                     <div className="movie-grid">
                         {filteredMovies.map((movie) => (
-                            <div key={movie.id} className="movie-card">
+                            <div
+                                key={movie.id}
+                                className="movie-card"
+                            >
                                 <div className="movie-poster-wrap">
                                     <img
                                         src={
@@ -469,21 +801,30 @@ export default function UserHome() {
                                         }
                                         alt={movie.title}
                                     />
+
                                     <span className="movie-status-badge">
-                                        {movie.status || "Đang chiếu"}
+                                        {movie.status ||
+                                            "Đang chiếu"}
                                     </span>
                                 </div>
 
                                 <div className="movie-card-body">
                                     <h3>{movie.title}</h3>
+
                                     <div className="movie-meta">
                                         <span>
-                                            <Film size={14} /> {movie.genre || "Hoạt hình"}
+                                            <Film size={14} />
+                                            {movie.genre ||
+                                                "Hoạt hình"}
                                         </span>
+
                                         <span>
-                                            <Clock size={14} /> {movie.duration || 120} phút
+                                            <Clock size={14} />
+                                            {movie.duration || 120}{" "}
+                                            phút
                                         </span>
                                     </div>
+
                                     <p className="movie-desc">
                                         {movie.description ||
                                             "Bộ phim đặc sắc đang được trình chiếu tại hệ thống rạp TOON CINEMA."}
@@ -491,9 +832,12 @@ export default function UserHome() {
 
                                     <button
                                         className="btn-book-movie"
-                                        onClick={() => openMovieBooking(movie)}
+                                        onClick={() =>
+                                            openMovieBooking(movie)
+                                        }
                                     >
-                                        <Ticket size={16} /> Chọn suất & Đặt vé
+                                        <Ticket size={16} />
+                                        Chọn suất & Đặt vé
                                     </button>
                                 </div>
                             </div>
@@ -502,17 +846,273 @@ export default function UserHome() {
                 )}
             </section>
 
-            <section id="combos-section" className="user-section">
+            {/* VÉ CỦA TÔI */}
+            {currentUser && (
+                <section
+                    id="my-tickets-section"
+                    className="user-section"
+                >
+                    <div className="section-head">
+                        <div>
+                            <h2>Vé của tôi</h2>
+                            <p>
+                                Tra cứu mã vé và xem lại các vé đã
+                                đặt bằng tài khoản này
+                            </p>
+                        </div>
+                    </div>
+
+                    <form
+                        onSubmit={handleTicketLookup}
+                        style={{
+                            display: "flex",
+                            gap: 10,
+                            flexWrap: "wrap",
+                            marginBottom: 20
+                        }}
+                    >
+                        <input
+                            value={ticketLookupCode}
+                            onChange={(e) =>
+                                setTicketLookupCode(e.target.value)
+                            }
+                            placeholder="Nhập mã vé, ví dụ TC-12AB34CD"
+                            style={{
+                                flex: "1 1 260px",
+                                minWidth: 0,
+                                padding: "13px 15px",
+                                border: "1px solid #e5d9f7",
+                                borderRadius: 12
+                            }}
+                        />
+
+                        <button
+                            className="btn-book-movie"
+                            type="submit"
+                            disabled={ticketLookupLoading}
+                        >
+                            {ticketLookupLoading
+                                ? "Đang kiểm tra..."
+                                : "Kiểm tra vé"}
+                        </button>
+                    </form>
+
+                    {ticketLookupResult && (
+                        <div
+                            className="receipt-details"
+                            style={{
+                                background: "#f7f2ff",
+                                padding: 18,
+                                borderRadius: 14,
+                                marginBottom: 18
+                            }}
+                        >
+                            <div>
+                                <span>Mã vé:</span>
+                                <strong>
+                                    {ticketLookupResult.ticket_code}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Phim:</span>
+                                <strong>
+                                    {ticketLookupResult.movie_title}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Phòng / Suất:</span>
+                                <strong>
+                                    {ticketLookupResult.room_name} —{" "}
+                                    {new Date(
+                                        ticketLookupResult.start_time
+                                    ).toLocaleString("vi-VN")}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Ghế:</span>
+                                <strong>
+                                    {(
+                                        ticketLookupResult.seats || []
+                                    ).join(", ")}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Trạng thái:</span>
+                                <strong>
+                                    {ticketLookupResult.status ===
+                                    "valid"
+                                        ? "Hợp lệ"
+                                        : ticketLookupResult.status}
+                                </strong>
+                            </div>
+                        </div>
+                    )}
+
+                    {myTickets.length === 0 ? (
+                        <div className="empty-state">
+                            Bạn chưa có vé nào. Hãy chọn phim và
+                            đặt vé nhé!
+                        </div>
+                    ) : (
+                        <div
+                            style={{
+                                display: "grid",
+                                gridTemplateColumns:
+                                    "repeat(auto-fit, minmax(260px, 1fr))",
+                                gap: 14
+                            }}
+                        >
+                            {myTickets.map((ticket) => (
+                                <article
+                                    key={ticket.id}
+                                    style={{
+                                        background: "#fff",
+                                        border: "1px solid #eee5fa",
+                                        borderRadius: 16,
+                                        padding: 18,
+                                        boxShadow:
+                                            "0 8px 24px rgba(80,50,120,.06)"
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            justifyContent:
+                                                "space-between",
+                                            gap: 8,
+                                            marginBottom: 10
+                                        }}
+                                    >
+                                        <strong
+                                            style={{
+                                                color: "#7c3aed"
+                                            }}
+                                        >
+                                            {ticket.ticket_code}
+                                        </strong>
+
+                                        <span
+                                            style={{
+                                                color:
+                                                    ticket.status ===
+                                                    "valid"
+                                                        ? "#15803d"
+                                                        : "#b45309",
+                                                fontSize: 12,
+                                                fontWeight: 700
+                                            }}
+                                        >
+                                            {ticket.status === "valid"
+                                                ? "HỢP LỆ"
+                                                : String(
+                                                      ticket.status
+                                                  ).toUpperCase()}
+                                        </span>
+                                    </div>
+
+                                    <h3
+                                        style={{
+                                            margin: "0 0 8px"
+                                        }}
+                                    >
+                                        {ticket.movie_title}
+                                    </h3>
+
+                                    <p
+                                        style={{
+                                            margin: "5px 0",
+                                            color: "#716782"
+                                        }}
+                                    >
+                                        Phòng: {ticket.room_name}
+                                    </p>
+
+                                    <p
+                                        style={{
+                                            margin: "5px 0",
+                                            color: "#716782"
+                                        }}
+                                    >
+                                        Suất:{" "}
+                                        {new Date(
+                                            ticket.start_time
+                                        ).toLocaleString("vi-VN")}
+                                    </p>
+
+                                    <p
+                                        style={{
+                                            margin: "5px 0",
+                                            color: "#716782"
+                                        }}
+                                    >
+                                        Ghế:{" "}
+                                        {(ticket.seats || []).join(
+                                            ", "
+                                        )}
+                                    </p>
+
+                                    <strong>
+                                        {Number(
+                                            ticket.total
+                                        ).toLocaleString("vi-VN")}{" "}
+                                        đ
+                                    </strong>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTicketLookupCode(
+                                                ticket.ticket_code
+                                            );
+                                            setTicketLookupResult(
+                                                ticket
+                                            );
+                                        }}
+                                        style={{
+                                            display: "block",
+                                            marginTop: 12,
+                                            border: 0,
+                                            borderRadius: 9,
+                                            padding: "9px 13px",
+                                            background: "#f1eaff",
+                                            color: "#7135c5",
+                                            fontWeight: 700,
+                                            cursor: "pointer"
+                                        }}
+                                    >
+                                        Xem / kiểm tra vé
+                                    </button>
+                                </article>
+                            ))}
+                        </div>
+                    )}
+                </section>
+            )}
+
+            {/* COMBO BẮP NƯỚC */}
+            <section
+                id="combos-section"
+                className="user-section"
+            >
                 <div className="section-head">
                     <div>
                         <h2>Combo Bắp & Nước</h2>
-                        <p>Thêm ưu đãi bắp nước khi đặt vé xem phim</p>
+                        <p>
+                            Thêm ưu đãi bắp nước khi đặt vé xem phim
+                        </p>
                     </div>
                 </div>
 
                 <div className="combo-grid">
                     {products.map((item) => (
-                        <div key={item.id} className="combo-card">
+                        <div
+                            key={item.id}
+                            className="combo-card"
+                        >
                             <img
                                 src={
                                     item.image ||
@@ -520,10 +1120,15 @@ export default function UserHome() {
                                 }
                                 alt={item.name}
                             />
+
                             <div className="combo-info">
                                 <h4>{item.name}</h4>
+
                                 <strong className="combo-price">
-                                    {Number(item.price).toLocaleString("vi-VN")} đ
+                                    {Number(
+                                        item.price
+                                    ).toLocaleString("vi-VN")}{" "}
+                                    đ
                                 </strong>
                             </div>
                         </div>
@@ -531,10 +1136,13 @@ export default function UserHome() {
                 </div>
             </section>
 
-            {/* Modal Đăng nhập / Đăng ký */}
+            {/* MODAL ĐĂNG NHẬP / ĐĂNG KÝ */}
             {authModal.open && (
                 <div className="booking-modal-backdrop">
-                    <div className="booking-modal" style={{ maxWidth: "420px" }}>
+                    <div
+                        className="booking-modal"
+                        style={{ maxWidth: "420px" }}
+                    >
                         <div className="booking-modal-header">
                             <div>
                                 <h3>
@@ -542,12 +1150,14 @@ export default function UserHome() {
                                         ? "Đăng nhập TOON CINEMA"
                                         : "Đăng ký tài khoản"}
                                 </h3>
+
                                 <small>
                                     {authModal.mode === "login"
                                         ? "Nhập email và mật khẩu của bạn"
                                         : "Tạo tài khoản mới để đặt vé nhanh chóng"}
                                 </small>
                             </div>
+
                             <button
                                 type="button"
                                 className="close-modal-btn"
@@ -557,7 +1167,10 @@ export default function UserHome() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleAuthSubmit} className="booking-modal-body">
+                        <form
+                            onSubmit={handleAuthSubmit}
+                            className="booking-modal-body"
+                        >
                             {authMessage.text && (
                                 <div
                                     style={{
@@ -566,11 +1179,13 @@ export default function UserHome() {
                                         marginBottom: "12px",
                                         fontSize: "14px",
                                         background:
-                                            authMessage.type === "error"
+                                            authMessage.type ===
+                                            "error"
                                                 ? "#fee2e2"
                                                 : "#dcfce7",
                                         color:
-                                            authMessage.type === "error"
+                                            authMessage.type ===
+                                            "error"
                                                 ? "#991b1b"
                                                 : "#166534"
                                     }}
@@ -580,10 +1195,21 @@ export default function UserHome() {
                             )}
 
                             {authModal.mode === "register" && (
-                                <div style={{ marginBottom: "12px" }}>
-                                    <label style={{ display: "block", marginBottom: "4px", fontWeight: 600 }}>
+                                <div
+                                    style={{
+                                        marginBottom: "12px"
+                                    }}
+                                >
+                                    <label
+                                        style={{
+                                            display: "block",
+                                            marginBottom: "4px",
+                                            fontWeight: 600
+                                        }}
+                                    >
                                         Họ và tên
                                     </label>
+
                                     <input
                                         type="text"
                                         className="customer-input"
@@ -593,17 +1219,29 @@ export default function UserHome() {
                                         onChange={(e) =>
                                             setAuthForm((prev) => ({
                                                 ...prev,
-                                                full_name: e.target.value
+                                                full_name:
+                                                    e.target.value
                                             }))
                                         }
                                     />
                                 </div>
                             )}
 
-                            <div style={{ marginBottom: "12px" }}>
-                                <label style={{ display: "block", marginBottom: "4px", fontWeight: 600 }}>
+                            <div
+                                style={{
+                                    marginBottom: "12px"
+                                }}
+                            >
+                                <label
+                                    style={{
+                                        display: "block",
+                                        marginBottom: "4px",
+                                        fontWeight: 600
+                                    }}
+                                >
                                     Email
                                 </label>
+
                                 <input
                                     type="email"
                                     className="customer-input"
@@ -619,10 +1257,21 @@ export default function UserHome() {
                                 />
                             </div>
 
-                            <div style={{ marginBottom: "16px" }}>
-                                <label style={{ display: "block", marginBottom: "4px", fontWeight: 600 }}>
+                            <div
+                                style={{
+                                    marginBottom: "16px"
+                                }}
+                            >
+                                <label
+                                    style={{
+                                        display: "block",
+                                        marginBottom: "4px",
+                                        fontWeight: 600
+                                    }}
+                                >
                                     Mật khẩu
                                 </label>
+
                                 <input
                                     type="password"
                                     className="customer-input"
@@ -651,13 +1300,21 @@ export default function UserHome() {
                                     : "Đăng ký"}
                             </button>
 
-                            <div style={{ marginTop: "12px", textAlign: "center", fontSize: "13px" }}>
+                            <div
+                                style={{
+                                    marginTop: "12px",
+                                    textAlign: "center",
+                                    fontSize: "13px"
+                                }}
+                            >
                                 {authModal.mode === "login" ? (
                                     <span>
                                         Chưa có tài khoản?{" "}
                                         <button
                                             type="button"
-                                            onClick={() => openAuth("register")}
+                                            onClick={() =>
+                                                openAuth("register")
+                                            }
                                             style={{
                                                 background: "none",
                                                 border: "none",
@@ -674,7 +1331,9 @@ export default function UserHome() {
                                         Đã có tài khoản?{" "}
                                         <button
                                             type="button"
-                                            onClick={() => openAuth("login")}
+                                            onClick={() =>
+                                                openAuth("login")
+                                            }
                                             style={{
                                                 background: "none",
                                                 border: "none",
@@ -693,19 +1352,27 @@ export default function UserHome() {
                 </div>
             )}
 
+            {/* MODAL ĐẶT VÉ */}
             {selectedMovie && (
                 <div className="booking-modal-backdrop">
                     <div className="booking-modal">
                         <div className="booking-modal-header">
                             <div>
-                                <h3>Đặt vé: {selectedMovie.title}</h3>
+                                <h3>
+                                    Đặt vé: {selectedMovie.title}
+                                </h3>
+
                                 <small>
-                                    {selectedMovie.genre} • {selectedMovie.duration} phút
+                                    {selectedMovie.genre} •{" "}
+                                    {selectedMovie.duration} phút
                                 </small>
                             </div>
+
                             <button
                                 className="close-modal-btn"
-                                onClick={() => setSelectedMovie(null)}
+                                onClick={() =>
+                                    setSelectedMovie(null)
+                                }
                             >
                                 <X size={20} />
                             </button>
@@ -714,198 +1381,390 @@ export default function UserHome() {
                         <div className="booking-modal-body">
                             {ticketReceipt ? (
                                 <div className="receipt-box">
-                                    <CheckCircle2 size={48} color="#16a34a" />
+                                    <CheckCircle2
+                                        size={48}
+                                        color="#16a34a"
+                                    />
+
                                     <h3>Đặt vé thành công!</h3>
+
                                     <p>
-                                        Mã vé của bạn: <strong>{ticketReceipt.code}</strong>
+                                        Mã vé của bạn:{" "}
+                                        <strong>
+                                            {ticketReceipt.code}
+                                        </strong>
                                     </p>
+
                                     <div className="receipt-details">
                                         <div>
                                             <span>Khách hàng:</span>
-                                            <strong>{ticketReceipt.customer}</strong>
+                                            <strong>
+                                                {ticketReceipt.customer}
+                                            </strong>
                                         </div>
+
                                         <div>
                                             <span>Phim:</span>
-                                            <strong>{ticketReceipt.movieTitle}</strong>
+                                            <strong>
+                                                {ticketReceipt.movieTitle}
+                                            </strong>
                                         </div>
+
                                         <div>
                                             <span>Phòng / Suất:</span>
                                             <strong>
-                                                {ticketReceipt.roomName} —{" "}
-                                                {new Date(ticketReceipt.startTime).toLocaleString("vi-VN")}
+                                                {ticketReceipt.roomName}{" "}
+                                                —{" "}
+                                                {new Date(
+                                                    ticketReceipt.startTime
+                                                ).toLocaleString("vi-VN")}
                                             </strong>
                                         </div>
+
                                         <div>
                                             <span>Ghế đã đặt:</span>
-                                            <strong>{ticketReceipt.seats.join(", ")}</strong>
+                                            <strong>
+                                                {ticketReceipt.seats.join(
+                                                    ", "
+                                                )}
+                                            </strong>
                                         </div>
-                                        {ticketReceipt.combos.length > 0 && (
+
+                                        {ticketReceipt.combos.length >
+                                            0 && (
                                             <div>
                                                 <span>Bắp nước:</span>
+
                                                 <strong>
                                                     {ticketReceipt.combos
-                                                        .map((c) => `${c.name} (x${c.qty})`)
+                                                        .map(
+                                                            (combo) =>
+                                                                `${combo.name} (x${
+                                                                    combo.quantity ??
+                                                                    combo.qty
+                                                                })`
+                                                        )
                                                         .join(", ")}
                                                 </strong>
                                             </div>
                                         )}
+
                                         <div className="receipt-total">
-                                            <span>Tổng thanh toán:</span>
+                                            <span>
+                                                Tổng thanh toán:
+                                            </span>
+
                                             <strong>
-                                                {ticketReceipt.total.toLocaleString("vi-VN")} đ
+                                                {ticketReceipt.total.toLocaleString(
+                                                    "vi-VN"
+                                                )}{" "}
+                                                đ
                                             </strong>
                                         </div>
                                     </div>
+
                                     <button
                                         className="btn-book-movie"
-                                        onClick={() => setSelectedMovie(null)}
+                                        onClick={() =>
+                                            setSelectedMovie(null)
+                                        }
                                     >
                                         Hoàn tất
                                     </button>
                                 </div>
                             ) : (
                                 <>
+                                    {/* BƯỚC 1: CHỌN SUẤT CHIẾU */}
                                     <div className="booking-step">
                                         <h4>
-                                            <Calendar size={16} /> 1. Chọn suất chiếu
+                                            <Calendar size={16} />
+                                            1. Chọn suất chiếu
                                         </h4>
-                                        {movieShowtimes.length === 0 ? (
+
+                                        {movieShowtimes.length ===
+                                        0 ? (
                                             <p className="muted-text">
-                                                Phim này hiện chưa có lịch chiếu.
+                                                Phim này hiện chưa có
+                                                lịch chiếu.
                                             </p>
                                         ) : (
                                             <div className="showtime-pills">
-                                                {movieShowtimes.map((st) => (
-                                                    <button
-                                                        key={st.id}
-                                                        className={`showtime-pill ${
-                                                            selectedShowtime?.id === st.id ? "active" : ""
-                                                        }`}
-                                                        onClick={() => handleSelectShowtime(st)}
-                                                    >
-                                                        <strong>
-                                                            {new Date(st.start_time).toLocaleTimeString("vi-VN", {
-                                                                hour: "2-digit",
-                                                                minute: "2-digit"
-                                                            })}
-                                                        </strong>
-                                                        <span>
-                                                            {new Date(st.start_time).toLocaleDateString("vi-VN")} •{" "}
-                                                            {st.room_name}
-                                                        </span>
-                                                        <small>
-                                                            {Number(st.price).toLocaleString("vi-VN")} đ/ghế
-                                                        </small>
-                                                    </button>
-                                                ))}
+                                                {movieShowtimes.map(
+                                                    (st) => (
+                                                        <button
+                                                            key={st.id}
+                                                            className={`showtime-pill ${
+                                                                selectedShowtime?.id ===
+                                                                st.id
+                                                                    ? "active"
+                                                                    : ""
+                                                            }`}
+                                                            onClick={() =>
+                                                                handleSelectShowtime(
+                                                                    st
+                                                                )
+                                                            }
+                                                        >
+                                                            <strong>
+                                                                {new Date(
+                                                                    st.start_time
+                                                                ).toLocaleTimeString(
+                                                                    "vi-VN",
+                                                                    {
+                                                                        hour: "2-digit",
+                                                                        minute: "2-digit"
+                                                                    }
+                                                                )}
+                                                            </strong>
+
+                                                            <span>
+                                                                {new Date(
+                                                                    st.start_time
+                                                                ).toLocaleDateString(
+                                                                    "vi-VN"
+                                                                )}{" "}
+                                                                •{" "}
+                                                                {st.room_name}
+                                                            </span>
+
+                                                            <small>
+                                                                {Number(
+                                                                    st.price
+                                                                ).toLocaleString(
+                                                                    "vi-VN"
+                                                                )}{" "}
+                                                                đ/ghế
+                                                            </small>
+                                                        </button>
+                                                    )
+                                                )}
                                             </div>
                                         )}
                                     </div>
 
+                                    {/* BƯỚC 2: CHỌN GHẾ */}
                                     {selectedShowtime && (
                                         <div className="booking-step">
                                             <h4>
-                                                <Ticket size={16} /> 2. Chọn ghế ngồi ({selectedShowtime.room_name})
+                                                <Ticket size={16} />
+                                                2. Chọn ghế ngồi (
+                                                {selectedShowtime.room_name}
+                                                )
                                             </h4>
 
-                                            <div className="screen-bar">MÀN HÌNH CHIẾU</div>
+                                            <div className="screen-bar">
+                                                MÀN HÌNH CHIẾU
+                                            </div>
 
                                             <div className="user-seat-grid">
-                                                {allSeats.map((seat) => {
-                                                    const isBooked = bookedSeats.includes(seat);
-                                                    const isSelected = selectedSeats.includes(seat);
-                                                    return (
-                                                        <button
-                                                            key={seat}
-                                                            disabled={isBooked}
-                                                            onClick={() => toggleSeat(seat)}
-                                                            className={`user-seat ${
-                                                                isBooked
-                                                                    ? "booked"
-                                                                    : isSelected
-                                                                    ? "selected"
-                                                                    : ""
-                                                            }`}
-                                                        >
-                                                            {seat}
-                                                        </button>
-                                                    );
-                                                })}
+                                                {allSeats.map(
+                                                    (seat) => {
+                                                        const isBooked =
+                                                            bookedSeats.includes(
+                                                                seat
+                                                            );
+
+                                                        const isSelected =
+                                                            selectedSeats.includes(
+                                                                seat
+                                                            );
+
+                                                        return (
+                                                            <button
+                                                                key={seat}
+                                                                disabled={
+                                                                    isBooked
+                                                                }
+                                                                onClick={() =>
+                                                                    toggleSeat(
+                                                                        seat
+                                                                    )
+                                                                }
+                                                                className={`user-seat ${
+                                                                    isBooked
+                                                                        ? "booked"
+                                                                        : isSelected
+                                                                        ? "selected"
+                                                                        : ""
+                                                                }`}
+                                                            >
+                                                                {seat}
+                                                            </button>
+                                                        );
+                                                    }
+                                                )}
                                             </div>
 
                                             <div className="seat-legend">
                                                 <span>
-                                                    <i className="dot free" /> Ghế trống
+                                                    <i className="dot free" />
+                                                    Ghế trống
                                                 </span>
+
                                                 <span>
-                                                    <i className="dot selected" /> Đang chọn
+                                                    <i className="dot selected" />
+                                                    Đang chọn
                                                 </span>
+
                                                 <span>
-                                                    <i className="dot booked" /> Đã đặt
+                                                    <i className="dot booked" />
+                                                    Đã đặt
                                                 </span>
                                             </div>
                                         </div>
                                     )}
 
-                                    {selectedShowtime && products.length > 0 && (
-                                        <div className="booking-step">
-                                            <h4>
-                                                <Popcorn size={16} /> 3. Chọn thêm bắp nước (Tùy chọn)
-                                            </h4>
-                                            <div className="modal-product-list">
-                                                {products.map((p) => {
-                                                    const qty = cartProducts[p.id] || 0;
-                                                    return (
-                                                        <div key={p.id} className="modal-product-row">
-                                                            <div>
-                                                                <strong>{p.name}</strong>
-                                                                <small>
-                                                                    {Number(p.price).toLocaleString("vi-VN")} đ
-                                                                </small>
-                                                            </div>
-                                                            <div className="qty-controls">
-                                                                <button onClick={() => updateProductQty(p, -1)}>
-                                                                    -
-                                                                </button>
-                                                                <span>{qty}</span>
-                                                                <button onClick={() => updateProductQty(p, 1)}>
-                                                                    +
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* BƯỚC 3: CHỌN COMBO */}
+                                    {selectedShowtime &&
+                                        products.length > 0 && (
+                                            <div className="booking-step">
+                                                <h4>
+                                                    <Popcorn size={16} />
+                                                    3. Chọn thêm bắp
+                                                    nước (Tùy chọn)
+                                                </h4>
 
+                                                <div className="modal-product-list">
+                                                    {products.map(
+                                                        (product) => {
+                                                            const qty =
+                                                                cartProducts[
+                                                                    product.id
+                                                                ] || 0;
+
+                                                            return (
+                                                                <div
+                                                                    key={
+                                                                        product.id
+                                                                    }
+                                                                    className="modal-product-row"
+                                                                >
+                                                                    <div>
+                                                                        <strong>
+                                                                            {
+                                                                                product.name
+                                                                            }
+                                                                        </strong>
+
+                                                                        <small>
+                                                                            {Number(
+                                                                                product.price
+                                                                            ).toLocaleString(
+                                                                                "vi-VN"
+                                                                            )}{" "}
+                                                                            đ
+                                                                        </small>
+
+                                                                        <small>
+                                                                            Còn:{" "}
+                                                                            {Number(
+                                                                                product.quantity ??
+                                                                                    0
+                                                                            )}{" "}
+                                                                            sản phẩm
+                                                                        </small>
+                                                                    </div>
+
+                                                                    <div className="qty-controls">
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={
+                                                                                qty <=
+                                                                                0
+                                                                            }
+                                                                            onClick={() =>
+                                                                                updateProductQty(
+                                                                                    product,
+                                                                                    -1
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            -
+                                                                        </button>
+
+                                                                        <span>
+                                                                            {
+                                                                                qty
+                                                                            }
+                                                                        </span>
+
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={
+                                                                                qty >=
+                                                                                Number(
+                                                                                    product.quantity ??
+                                                                                        0
+                                                                                )
+                                                                            }
+                                                                            onClick={() =>
+                                                                                updateProductQty(
+                                                                                    product,
+                                                                                    1
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            +
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        }
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                    {/* THANH TOÁN */}
                                     {selectedShowtime && (
                                         <div className="booking-checkout-bar">
                                             <input
                                                 type="text"
                                                 placeholder="Nhập tên của bạn (tùy chọn)..."
                                                 value={customerName}
-                                                onChange={(e) => setCustomerName(e.target.value)}
+                                                onChange={(e) =>
+                                                    setCustomerName(
+                                                        e.target.value
+                                                    )
+                                                }
                                                 className="customer-input"
                                             />
+
                                             <div className="checkout-summary">
                                                 <div>
                                                     <small>
                                                         Ghế:{" "}
-                                                        {selectedSeats.length > 0
-                                                            ? selectedSeats.join(", ")
+                                                        {selectedSeats.length >
+                                                        0
+                                                            ? selectedSeats.join(
+                                                                  ", "
+                                                              )
                                                             : "Chưa chọn"}
                                                     </small>
+
                                                     <strong>
-                                                        Tổng: {grandTotal.toLocaleString("vi-VN")} đ
+                                                        Tổng:{" "}
+                                                        {grandTotal.toLocaleString(
+                                                            "vi-VN"
+                                                        )}{" "}
+                                                        đ
                                                     </strong>
                                                 </div>
+
                                                 <button
                                                     className="btn-confirm-pay"
-                                                    disabled={bookingLoading || selectedSeats.length === 0}
-                                                    onClick={handleConfirmBooking}
+                                                    disabled={
+                                                        bookingLoading ||
+                                                        selectedSeats.length ===
+                                                            0
+                                                    }
+                                                    onClick={
+                                                        handleConfirmBooking
+                                                    }
                                                 >
-                                                    {bookingLoading ? "Đang xử lý..." : "Xác nhận đặt vé"}
+                                                    {bookingLoading
+                                                        ? "Đang xử lý..."
+                                                        : "Xác nhận đặt vé"}
                                                 </button>
                                             </div>
                                         </div>

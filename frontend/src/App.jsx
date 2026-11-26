@@ -11,6 +11,7 @@ import Showtimes from "./pages/Showtimes";
 import Seats from "./pages/Seats";
 import Products from "./pages/Products";
 import UserHome from "./pages/UserHome";
+import NotificationHost from "./components/NotificationHost";
 
 function AdminLayout() {
     const [active, setActive] = useState("dashboard");
@@ -65,6 +66,7 @@ function AdminLayout() {
 export default function App() {
     return (
         <BrowserRouter>
+            <NotificationHost />
             <Routes>
                 <Route path="/" element={<UserHome />} />
                 <Route path="/admin/*" element={<AdminLayout />} />

@@ -1,3 +1,4 @@
+import { notify } from "../components/NotificationHost";
 import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
@@ -46,7 +47,7 @@ export default function Showtimes() {
             setMovies(m.data);
             setRooms(r.data);
         } catch {
-            alert("Không thể tải dữ liệu suất chiếu.");
+            notify("Không thể tải dữ liệu suất chiếu.");
         }
     }
 
@@ -92,7 +93,7 @@ export default function Showtimes() {
             setShowForm(false);
             await loadData();
         } catch (err) {
-            alert(err.response?.data?.message || "Lỗi lưu suất chiếu.");
+            notify(err.response?.data?.message || "Lỗi lưu suất chiếu.");
         }
     }
 
@@ -103,7 +104,7 @@ export default function Showtimes() {
             await showtimeAPI.delete(id);
             await loadData();
         } catch {
-            alert("Không thể xóa suất chiếu.");
+            notify("Không thể xóa suất chiếu.");
         }
     }
 

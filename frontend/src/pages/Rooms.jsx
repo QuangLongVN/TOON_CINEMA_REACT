@@ -1,3 +1,4 @@
+import { notify } from "../components/NotificationHost";
 import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { roomAPI } from "../services/api";
@@ -19,7 +20,7 @@ export default function Rooms() {
             setRooms(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error("Lỗi tải phòng:", error);
-            alert("Không thể tải danh sách phòng chiếu.");
+            notify("Không thể tải danh sách phòng chiếu.");
         }
     }
 
@@ -55,7 +56,7 @@ export default function Rooms() {
         const name = form.name.trim();
 
         if (!name) {
-            alert("Vui lòng nhập tên phòng.");
+            notify("Vui lòng nhập tên phòng.");
             return;
         }
 
@@ -69,10 +70,10 @@ export default function Rooms() {
 
             if (editingId !== null) {
                 await roomAPI.update(editingId, data);
-                alert("Cập nhật phòng thành công!");
+                notify("Cập nhật phòng thành công!");
             } else {
                 await roomAPI.create(data);
-                alert("Thêm phòng thành công!");
+                notify("Thêm phòng thành công!");
             }
 
             closeFormAfterSave();
@@ -81,7 +82,7 @@ export default function Rooms() {
         } catch (error) {
             console.error("Lỗi lưu phòng:", error);
 
-            alert(
+            notify(
                 error.response?.data?.message ||
                 "Không thể lưu phòng chiếu."
             );
@@ -103,12 +104,12 @@ export default function Rooms() {
 
         try {
             await roomAPI.delete(id);
-            alert("Xóa phòng thành công!");
+            notify("Xóa phòng thành công!");
             await loadRooms();
         } catch (error) {
             console.error("Lỗi xóa phòng:", error);
 
-            alert(
+            notify(
                 error.response?.data?.message ||
                 "Không thể xóa phòng chiếu."
             );

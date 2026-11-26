@@ -9,6 +9,7 @@ const roomRoutes = require("./routes/roomRoutes");
 const showtimeRoutes = require("./routes/showtimeRoutes");
 const seatRoutes = require("./routes/seatRoutes");
 const productRoutes = require("./routes/productRoutes");
+const ticketRoutes = require("./routes/ticketRoutes");
 
 
 const db = require("./config/db");
@@ -122,6 +123,7 @@ app.use("/api/rooms", roomRoutes);
 app.use("/api/showtimes", showtimeRoutes);
 app.use("/api/seats", seatRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/tickets", ticketRoutes);
 
 // ========================================
 // 6. XỬ LÝ API KHÔNG TỒN TẠI
