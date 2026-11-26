@@ -82,7 +82,6 @@ app.get("/", (req, res) => {
             <div class="container">
                 <h1>🎬 TOON CINEMA</h1>
                 <h2>Backend API</h2>
-                <p>Node.js + Express + TiDB Cloud</p>
                 <p>Server is running successfully!</p>
             </div>
         </body>
